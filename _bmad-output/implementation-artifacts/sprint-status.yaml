@@ -73,7 +73,7 @@ development_status:
   2-2-signup-and-login-ui: done
   2-3-background-questionnaire-and-user-profile: done
   2-4-skill-floor-assessment: done
-  2-5-graceful-redirect-for-under-qualified-users: backlog
+  2-5-graceful-redirect-for-under-qualified-users: done
   epic-2-retrospective: optional
 
   # Epic 3: Code Execution & Workspace
