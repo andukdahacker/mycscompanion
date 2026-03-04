@@ -1,9 +1,16 @@
+import { timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
+import type { Queue } from 'bullmq'
 import basicAuth from '@fastify/basic-auth'
 import { createBullBoard } from '@bull-board/api'
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter'
 import { FastifyAdapter } from '@bull-board/fastify'
 
-async function adminPlugin(fastify: FastifyInstance): Promise<void> {
+interface AdminPluginOptions {
+  readonly executionQueue?: Queue
+}
+
+async function adminPlugin(fastify: FastifyInstance, opts: AdminPluginOptions = {}): Promise<void> {
   // Basic auth for /admin routes
   const adminUser = process.env['MCC_ADMIN_USER'] ?? 'admin'
   const adminPass = process.env['MCC_ADMIN_PASSWORD']
@@ -15,19 +22,30 @@ async function adminPlugin(fastify: FastifyInstance): Promise<void> {
 
   await fastify.register(basicAuth, {
     validate: async (username, password) => {
-      if (username !== adminUser || password !== adminPass) {
+      const userBuf = Buffer.from(username)
+      const expectedUserBuf = Buffer.from(adminUser)
+      const passBuf = Buffer.from(password)
+      const expectedPassBuf = Buffer.from(adminPass)
+      // Constant-time comparison to prevent timing attacks
+      const userMatch = userBuf.length === expectedUserBuf.length && timingSafeEqual(userBuf, expectedUserBuf)
+      const passMatch = passBuf.length === expectedPassBuf.length && timingSafeEqual(passBuf, expectedPassBuf)
+      if (!userMatch || !passMatch) {
         throw new Error('Unauthorized')
       }
     },
     authenticate: { realm: 'mycscompanion-admin' },
   })
 
-  // Bull Board setup — empty queues, filled in Epic 3
+  // Bull Board setup
   const serverAdapter = new FastifyAdapter()
   serverAdapter.setBasePath('/admin/queues')
 
+  const queues = opts.executionQueue
+    ? [new BullMQAdapter(opts.executionQueue)]
+    : []
+
   createBullBoard({
-    queues: [], // Queues added dynamically in Epic 3 (Story 3.3)
+    queues,
     serverAdapter,
   })
 

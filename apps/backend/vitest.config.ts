@@ -11,6 +11,7 @@ export default mergeConfig(baseVitestConfig, {
       NODE_ENV: 'test',
       LOG_LEVEL: 'silent',
     },
+    fileParallelism: false,
     globalSetup: './src/test/global-setup.ts',
     setupFiles: ['./src/test/setup.ts'],
     exclude: ['**/e2e/**', '**/node_modules/**'],
