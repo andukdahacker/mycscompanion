@@ -52,7 +52,7 @@ export function NotReady(): React.ReactElement {
       <Card className="w-full max-w-lg">
         <CardHeader>
           <h1 className="text-2xl font-semibold leading-none">
-            Go might be new territory — and that's totally fine
+            Go might be new territory — and that&apos;s totally fine
           </h1>
           <p className="text-muted-foreground">
             mycscompanion assumes you can already read basic code — loops,
@@ -91,7 +91,7 @@ export function NotReady(): React.ReactElement {
           {/* Return message */}
           <p className="text-sm text-muted-foreground">
             Bookmark this page and come back anytime — your account stays
-            active and we'll be here when you're ready.
+            active and we&apos;ll be here when you&apos;re ready.
           </p>
 
           {/* Sign out */}

@@ -1,9 +1,17 @@
+import { Suspense } from 'react'
+import React from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router'
 import { ProtectedRoute } from './components/common/ProtectedRoute'
 import { SignIn } from './routes/SignIn'
 import { SignUp } from './routes/SignUp'
 import { Onboarding } from './routes/Onboarding'
 import { NotReady } from './routes/NotReady'
+import { WorkspaceSkeleton } from './components/workspace/WorkspaceSkeleton'
+
+const Workspace = React.lazy(() => import('./routes/Workspace'))
+
+const queryClient = new QueryClient()
 
 // Placeholder components — replaced by real implementations in later stories
 function OverviewPlaceholder(): React.ReactElement {
@@ -12,6 +20,7 @@ function OverviewPlaceholder(): React.ReactElement {
 
 function App(): React.ReactElement {
   return (
+    <QueryClientProvider client={queryClient}>
     <BrowserRouter>
       <Routes>
         {/* Public routes */}
@@ -22,6 +31,14 @@ function App(): React.ReactElement {
         <Route element={<ProtectedRoute />}>
           <Route path="/onboarding" element={<Onboarding />} />
           <Route path="/overview" element={<OverviewPlaceholder />} />
+          <Route
+            path="/workspace/:milestoneId"
+            element={
+              <Suspense fallback={<WorkspaceSkeleton />}>
+                <Workspace />
+              </Suspense>
+            }
+          />
           <Route path="/not-ready" element={<NotReady />} />
           <Route path="/" element={<Navigate to="/overview" replace />} />
         </Route>
@@ -30,6 +47,7 @@ function App(): React.ReactElement {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+    </QueryClientProvider>
   )
 }
 

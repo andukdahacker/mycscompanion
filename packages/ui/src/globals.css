@@ -31,3 +31,11 @@
     src: local('JetBrains Mono');
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-group] *,
+  [data-separator] * {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}

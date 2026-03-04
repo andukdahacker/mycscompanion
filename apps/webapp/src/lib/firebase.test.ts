@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type * as FirebaseAppModule from 'firebase/app'
 import { FirebaseError } from 'firebase/app'
 
 const mockSignInWithEmailAndPassword = vi.fn()
@@ -21,7 +22,7 @@ vi.mock('firebase/auth', () => ({
 }))
 
 vi.mock('firebase/app', async () => {
-  const actual = await vi.importActual<typeof import('firebase/app')>('firebase/app')
+  const actual = await vi.importActual<typeof FirebaseAppModule>('firebase/app')
   return {
     ...actual,
     initializeApp: vi.fn(() => ({})),

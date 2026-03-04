@@ -18,10 +18,12 @@
     "@mycscompanion/ui": "workspace:*",
     "@tanstack/react-query": "^5.90.21",
     "firebase": "^12.9.0",
+    "lucide-react": "^0.575.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router": "^7.6.1",
-    "serve": "^14.2.5"
+    "serve": "^14.2.5",
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.1",
