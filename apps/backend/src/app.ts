@@ -56,6 +56,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     queue: executionQueue,
     rateLimiter,
     eventPublisher,
+    redis,
   })
   await fastify.register(tutorPlugin, { prefix: '/api/tutor' })
   await fastify.register(curriculumPlugin, { prefix: '/api/curriculum' })
