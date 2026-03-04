@@ -1,0 +1,12 @@
+# Fly.io app for execution environment image registry.
+# This app hosts the Docker image only -- Machines are created via API.
+# One-time setup: fly apps create mcc-execution
+#
+# Manual image push workflow:
+#   fly auth docker && docker push registry.fly.io/mcc-execution:<tag>
+# CI automates this in .github/workflows/execution-image.yml.
+app = "mcc-execution"
+primary_region = "ord"
+
+# No [services], [http_service], or [checks] -- Machines are ephemeral,
+# created by the worker via Fly Machines REST API (Story 3.2).
