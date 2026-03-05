@@ -35,7 +35,7 @@
     "js-yaml": "^4.1.1",
     "kysely": "^0.28.11",
     "pg": "^8.19.0",
-    "pino": "^9.7.0"
+    "pino": "^10.3.1"
   },
   "devDependencies": {
     "@mycscompanion/config": "workspace:*",
