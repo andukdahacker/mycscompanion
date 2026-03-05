@@ -1,42 +1,56 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useParams } from 'react-router'
-import { useQuery } from '@tanstack/react-query'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
 import { WorkspaceLayout } from '../components/workspace/WorkspaceLayout'
 import { WorkspaceSkeleton } from '../components/workspace/WorkspaceSkeleton'
 import { useDelayedLoading } from '../hooks/use-delayed-loading'
+import { useWorkspaceData } from '../hooks/use-workspace-data'
+import { useSubmitCode } from '../hooks/use-submit-code'
+import { useStuckDetection } from '../hooks/use-stuck-detection'
+import { useEditorStore } from '../stores/editor-store'
 
-// Placeholder mock data — real API comes in Epic 4
-const MOCK_WORKSPACE_DATA = {
-  milestoneName: 'KV Store',
-  milestoneNumber: 1,
-  progress: 0,
-  initialContent: 'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("Hello, World!")\n}\n',
-} as const
-
-function Workspace(): React.ReactElement {
+function Workspace(): React.ReactElement | null {
   const { milestoneId } = useParams<{ milestoneId: string }>()
 
-  // Placeholder query — real API (GET /api/workspace/:milestoneId) comes in Epic 4
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['workspace', 'get', milestoneId],
-    queryFn: () => Promise.resolve(MOCK_WORKSPACE_DATA),
-    staleTime: 5 * 60 * 1000,
-  })
-
+  const { data, isLoading, isError, refetch } = useWorkspaceData(milestoneId)
   const showLoading = useDelayedLoading(isLoading)
 
-  // Placeholder handlers — wired to real submission API in Story 3.7
+  const { submit, isRunning, outputLines } = useSubmitCode()
+
+  const stuckDetectionConfig = data?.stuckDetection ?? { thresholdMinutes: 10, stage2OffsetSeconds: 60 }
+  const { resetTimer } = useStuckDetection(stuckDetectionConfig)
+
+  // Reset stuck detection on editor content changes (character insert/delete/paste)
+  useEffect(() => {
+    const unsubscribe = useEditorStore.subscribe(
+      (state, prevState) => {
+        if (state.content !== prevState.content) {
+          resetTimer()
+        }
+      },
+    )
+    return unsubscribe
+  }, [resetTimer])
+
   const handleRun = useCallback(() => {
-    // No-op until Story 3.7
-  }, [])
+    if (!milestoneId) return
+    const code = useEditorStore.getState().content
+    resetTimer()
+    submit({ milestoneId, code })
+  }, [milestoneId, resetTimer, submit])
 
   const handleBenchmark = useCallback(() => {
     // No-op until Epic 7
-  }, [])
+    resetTimer()
+  }, [resetTimer])
 
   if (showLoading) {
     return <WorkspaceSkeleton />
+  }
+
+  // During the delayed-loading window (first 500ms), render nothing to prevent error flash
+  if (isLoading) {
+    return null
   }
 
   if (isError || !data) {
@@ -59,6 +73,9 @@ function Workspace(): React.ReactElement {
       initialContent={data.initialContent}
       onRun={handleRun}
       onBenchmark={handleBenchmark}
+      outputLines={outputLines}
+      isRunning={isRunning}
+      onRetry={handleRun}
     />
   )
 }

@@ -84,8 +84,8 @@ development_status:
   3-4-submission-api-and-sse-streaming: done
   3-5-workspace-layout-and-resizable-panels: done
   3-6-monaco-editor-integration: done
-  3-7-terminal-output-and-error-presentation: backlog
-  3-8-workspace-state-management: backlog
+  3-7-terminal-output-and-error-presentation: done
+  3-8-workspace-state-management: done
   epic-3-retrospective: optional
 
   # Epic 4: Milestone Content & Learning Loop
