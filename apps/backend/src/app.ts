@@ -1,6 +1,8 @@
 import type { FastifyError, FastifyInstance } from 'fastify'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
+import fastifyStatic from '@fastify/static'
+import { resolve, join } from 'node:path'
 import { Sentry } from './instrument.js'
 import { authPlugin } from './plugins/auth/index.js'
 import { executionPlugin } from './plugins/execution/index.js'
@@ -59,7 +61,30 @@ export async function buildApp(): Promise<FastifyInstance> {
     redis,
   })
   await fastify.register(tutorPlugin, { prefix: '/api/tutor' })
-  await fastify.register(curriculumPlugin, { prefix: '/api/curriculum' })
+  await fastify.register(curriculumPlugin, { prefix: '/api/curriculum', redis })
+
+  // Serve milestone concept explainer SVG assets
+  // Maps /assets/milestones/{slug}/{file} → content/milestones/{slug}/assets/{file}
+  const contentMilestonesRoot = resolve(process.cwd(), '..', '..', 'content', 'milestones')
+  await fastify.register(fastifyStatic, {
+    root: contentMilestonesRoot,
+    serve: false,
+  })
+  const VALID_ASSET_SLUG = /^[\w-]+$/
+  const VALID_ASSET_FILENAME = /^[\w.-]+$/
+  fastify.get<{ Params: { slug: string; filename: string } }>(
+    '/assets/milestones/:slug/:filename',
+    async (request, reply) => {
+      const { slug, filename } = request.params
+      if (!VALID_ASSET_SLUG.test(slug) || !VALID_ASSET_FILENAME.test(filename)) {
+        return reply.status(400).send({
+          error: { code: 'INVALID_PARAMS', message: 'Invalid slug or filename' },
+        })
+      }
+      return reply.sendFile(join(slug, 'assets', filename))
+    }
+  )
+
   await fastify.register(progressPlugin, { prefix: '/api/progress' })
   await fastify.register(accountPlugin, { prefix: '/api/account' })
 

@@ -22,6 +22,7 @@
     "@bull-board/fastify": "^6.20.3",
     "@fastify/basic-auth": "^6.2.0",
     "@fastify/cors": "^11.2.0",
+    "@fastify/static": "^9.0.0",
     "@mycscompanion/execution": "workspace:*",
     "@mycscompanion/shared": "workspace:*",
     "@paralleldrive/cuid2": "^3.3.0",
@@ -31,12 +32,14 @@
     "fastify-plugin": "^5.1.0",
     "firebase-admin": "^13.7.0",
     "ioredis": "^5.6.1",
+    "js-yaml": "^4.1.1",
     "kysely": "^0.28.11",
     "pg": "^8.19.0",
     "pino": "^9.7.0"
   },
   "devDependencies": {
     "@mycscompanion/config": "workspace:*",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.15.30",
     "@types/pg": "^8.16.0",
     "dotenv": "^17.3.1",

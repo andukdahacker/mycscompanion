@@ -41,6 +41,9 @@ importers:
       '@fastify/cors':
         specifier: ^11.2.0
         version: 11.2.0
+      '@fastify/static':
+        specifier: ^9.0.0
+        version: 9.0.0
       '@mycscompanion/execution':
         specifier: workspace:*
         version: link:../../packages/execution
@@ -68,6 +71,9 @@ importers:
       ioredis:
         specifier: ^5.6.1
         version: 5.9.3
+      js-yaml:
+        specifier: ^4.1.1
+        version: 4.1.1
       kysely:
         specifier: ^0.28.11
         version: 0.28.11
@@ -81,6 +87,9 @@ importers:
       '@mycscompanion/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@types/js-yaml':
+        specifier: ^4.0.9
+        version: 4.0.9
       '@types/node':
         specifier: ^22.15.30
         version: 22.19.12
@@ -2932,6 +2941,9 @@ packages:
 
   '@types/hast@3.0.4':
     resolution: {integrity: sha512-WPs+bbQw5aCj+x6laNGWLH3wviHtoCv/P3+otBhbOhJgG8qtpdAMlTCxLtsTWA7LH1Oh/bFCHsBn0TPS5m30EQ==}
+
+  '@types/js-yaml@4.0.9':
+    resolution: {integrity: sha512-k4MGaQl5TGo/iipqb2UDG2UwjXziSWkh0uysQelTlJpX1qGlpUZYm8PnO4DxG1qBomtJUdYJ6qR6xdIah10JLg==}
 
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
@@ -9279,6 +9291,8 @@ snapshots:
   '@types/hast@3.0.4':
     dependencies:
       '@types/unist': 3.0.3
+
+  '@types/js-yaml@4.0.9': {}
 
   '@types/json-schema@7.0.15': {}
 

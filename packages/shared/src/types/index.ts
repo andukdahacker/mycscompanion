@@ -5,3 +5,4 @@
 export type * from './db.js'
 export type * from './api.js'
 export type * from './domain.js'
+export type * from './curriculum.js'
