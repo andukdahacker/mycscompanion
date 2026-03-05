@@ -8,6 +8,8 @@ import { authPlugin } from './plugins/auth/index.js'
 import { executionPlugin } from './plugins/execution/index.js'
 import { tutorPlugin } from './plugins/tutor/index.js'
 import { curriculumPlugin } from './plugins/curriculum/index.js'
+import { completionPlugin } from './plugins/completion/index.js'
+import { createContentLoader } from './plugins/curriculum/content-loader.js'
 import { progressPlugin } from './plugins/progress/index.js'
 import { accountPlugin } from './plugins/account/index.js'
 import { adminPlugin } from './plugins/admin/index.js'
@@ -85,6 +87,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
   )
 
+  const completionContentLoader = createContentLoader({ redis, log: fastify.log })
+  await fastify.register(completionPlugin, { prefix: '/api/completion', contentLoader: completionContentLoader })
   await fastify.register(progressPlugin, { prefix: '/api/progress' })
   await fastify.register(accountPlugin, { prefix: '/api/account' })
 

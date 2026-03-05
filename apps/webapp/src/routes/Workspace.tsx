@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { useParams } from 'react-router'
+import { useParams, useNavigate } from 'react-router'
+import { useMutation } from '@tanstack/react-query'
+import type { CompleteMilestoneResponse } from '@mycscompanion/shared'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
 import { WorkspaceLayout } from '../components/workspace/WorkspaceLayout'
 import { WorkspaceSkeleton } from '../components/workspace/WorkspaceSkeleton'
@@ -7,6 +9,7 @@ import { useDelayedLoading } from '../hooks/use-delayed-loading'
 import { useWorkspaceData } from '../hooks/use-workspace-data'
 import { useSubmitCode } from '../hooks/use-submit-code'
 import { useStuckDetection } from '../hooks/use-stuck-detection'
+import { apiFetch } from '../lib/api-fetch'
 import { useEditorStore } from '../stores/editor-store'
 import { useWorkspaceUIStore } from '../stores/workspace-ui-store'
 
@@ -16,7 +19,8 @@ function Workspace(): React.ReactElement | null {
   const { data, isLoading, isError, refetch } = useWorkspaceData(milestoneId)
   const showLoading = useDelayedLoading(isLoading)
 
-  const { submit, isRunning, outputLines, criteriaResults } = useSubmitCode()
+  const navigate = useNavigate()
+  const { submit, submissionId, isRunning, outputLines, criteriaResults, allCriteriaMet } = useSubmitCode()
 
   const stuckDetectionConfig = data?.stuckDetection ?? { thresholdMinutes: 10, stage2OffsetSeconds: 60 }
   const { resetTimer } = useStuckDetection(stuckDetectionConfig)
@@ -44,6 +48,25 @@ function Workspace(): React.ReactElement | null {
     // No-op until Epic 7
     resetTimer()
   }, [resetTimer])
+
+  const completeMutation = useMutation({
+    mutationKey: ['completion', 'complete'],
+    mutationFn: ({ mId, sId }: { mId: string; sId: string }) =>
+      apiFetch<CompleteMilestoneResponse>(`/api/completion/${mId}/complete`, {
+        method: 'POST',
+        body: JSON.stringify({ submissionId: sId }),
+      }),
+    onSuccess: () => {
+      if (milestoneId) {
+        navigate(`/completion/${milestoneId}`)
+      }
+    },
+  })
+
+  const handleCompleteMilestone = useCallback(() => {
+    if (!milestoneId || !submissionId) return
+    completeMutation.mutate({ mId: milestoneId, sId: submissionId })
+  }, [milestoneId, submissionId, completeMutation])
 
   // Content-before-tools: show brief tab on initial load so user reads brief while Monaco lazy-loads
   const briefShownRef = useRef(false)
@@ -75,11 +98,16 @@ function Workspace(): React.ReactElement | null {
     )
   }
 
+  const criteria = data.criteria ?? []
+  const progress = criteriaResults && criteria.length > 0
+    ? Math.round((criteriaResults.filter((r) => r.status === 'met').length / criteria.length) * 100)
+    : 0
+
   return (
     <WorkspaceLayout
       milestoneName={data.milestoneName}
       milestoneNumber={data.milestoneNumber}
-      progress={data.progress}
+      progress={progress}
       initialContent={data.initialContent}
       onRun={handleRun}
       onBenchmark={handleBenchmark}
@@ -87,8 +115,10 @@ function Workspace(): React.ReactElement | null {
       isRunning={isRunning}
       onRetry={handleRun}
       brief={data.brief}
-      criteria={data.criteria}
+      criteria={criteria}
       criteriaResults={criteriaResults}
+      allCriteriaMet={allCriteriaMet}
+      onCompleteMilestone={handleCompleteMilestone}
     />
   )
 }

@@ -28,6 +28,8 @@ interface WorkspaceLayoutProps {
   readonly brief: string | null
   readonly criteria: ReadonlyArray<AcceptanceCriterion>
   readonly criteriaResults: ReadonlyArray<CriterionResult> | null
+  readonly allCriteriaMet?: boolean
+  readonly onCompleteMilestone?: () => void
 }
 
 function WorkspaceLayout({
@@ -43,6 +45,8 @@ function WorkspaceLayout({
   brief,
   criteria,
   criteriaResults,
+  allCriteriaMet,
+  onCompleteMilestone,
 }: WorkspaceLayoutProps): React.ReactElement {
   const breakpointMode = useWorkspaceUIStore((s) => s.breakpointMode)
   const setBreakpointMode = useWorkspaceUIStore((s) => s.setBreakpointMode)
@@ -132,7 +136,7 @@ function WorkspaceLayout({
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize="30%" minSize="120px">
-              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} />
+              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} />
             </ResizablePanel>
           </ResizablePanelGroup>
 
@@ -178,7 +182,7 @@ function WorkspaceLayout({
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize="30%" minSize="120px">
-              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} />
+              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} />
             </ResizablePanel>
           </ResizablePanelGroup>
         </ResizablePanel>

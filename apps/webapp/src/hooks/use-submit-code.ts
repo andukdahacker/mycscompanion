@@ -20,6 +20,7 @@ interface UseSubmitCodeResult {
   readonly isRunning: boolean
   readonly outputLines: ReadonlyArray<OutputLine>
   readonly criteriaResults: ReadonlyArray<CriterionResult> | null
+  readonly allCriteriaMet: boolean
 }
 
 function useSubmitCode(): UseSubmitCodeResult {
@@ -232,8 +233,11 @@ function useSubmitCode(): UseSubmitCodeResult {
 
   const isRunning = submitMutation.isPending || isStreaming
   const outputLines = submitErrorOutput ?? cachedOutput
+  const allCriteriaMet = criteriaResults !== null
+    && criteriaResults.length > 0
+    && criteriaResults.every((r) => r.status === 'met')
 
-  return { submit, submissionId, isRunning, outputLines, criteriaResults }
+  return { submit, submissionId, isRunning, outputLines, criteriaResults, allCriteriaMet }
 }
 
 export { useSubmitCode }

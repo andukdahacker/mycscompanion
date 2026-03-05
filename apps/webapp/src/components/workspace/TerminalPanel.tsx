@@ -21,11 +21,13 @@ interface TerminalPanelProps {
   readonly brief: string | null
   readonly criteria: ReadonlyArray<AcceptanceCriterion>
   readonly criteriaResults: ReadonlyArray<CriterionResult> | null
+  readonly allCriteriaMet?: boolean
+  readonly onCompleteMilestone?: () => void
 }
 
 const TABS = ['brief', 'output', 'criteria'] as const
 
-function TerminalPanel({ outputLines, isRunning, onRetry, brief, criteria, criteriaResults }: TerminalPanelProps): React.ReactElement {
+function TerminalPanel({ outputLines, isRunning, onRetry, brief, criteria, criteriaResults, allCriteriaMet, onCompleteMilestone }: TerminalPanelProps): React.ReactElement {
   const activeTab = useWorkspaceUIStore((s) => s.activeTerminalTab)
   const setActiveTab = useWorkspaceUIStore((s) => s.setActiveTerminalTab)
   const scrollRef = useAutoScroll([outputLines])
@@ -143,7 +145,7 @@ function TerminalPanel({ outputLines, isRunning, onRetry, brief, criteria, crite
             <OutputContent outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} />
           </ScrollArea>
         ) : (
-          <CriteriaContent criteria={criteria} criteriaResults={criteriaResults} />
+          <CriteriaContent criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} />
         )}
       </div>
     </div>
@@ -153,9 +155,13 @@ function TerminalPanel({ outputLines, isRunning, onRetry, brief, criteria, crite
 function CriteriaContent({
   criteria,
   criteriaResults,
+  allCriteriaMet,
+  onCompleteMilestone,
 }: {
   readonly criteria: ReadonlyArray<AcceptanceCriterion>
   readonly criteriaResults: ReadonlyArray<CriterionResult> | null
+  readonly allCriteriaMet?: boolean
+  readonly onCompleteMilestone?: () => void
 }): React.ReactElement {
   if (criteria.length === 0) {
     return (
@@ -199,6 +205,18 @@ function CriteriaContent({
             </li>
           ))}
         </ul>
+        {allCriteriaMet && onCompleteMilestone ? (
+          <div className="border-t p-3">
+            <button
+              type="button"
+              className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={onCompleteMilestone}
+              aria-label="Complete milestone and advance to next"
+            >
+              Complete Milestone
+            </button>
+          </div>
+        ) : null}
       </ScrollArea>
     )
   }

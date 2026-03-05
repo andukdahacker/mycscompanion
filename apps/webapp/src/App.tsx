@@ -8,8 +8,10 @@ import { SignUp } from './routes/SignUp'
 import { Onboarding } from './routes/Onboarding'
 import { NotReady } from './routes/NotReady'
 import { WorkspaceSkeleton } from './components/workspace/WorkspaceSkeleton'
+import { CompletionSkeleton } from './components/completion/CompletionSkeleton'
 
 const Workspace = React.lazy(() => import('./routes/Workspace'))
+const Completion = React.lazy(() => import('./routes/Completion'))
 
 const queryClient = new QueryClient()
 
@@ -36,6 +38,14 @@ function App(): React.ReactElement {
             element={
               <Suspense fallback={<WorkspaceSkeleton />}>
                 <Workspace />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/completion/:milestoneId"
+            element={
+              <Suspense fallback={<CompletionSkeleton />}>
+                <Completion />
               </Suspense>
             }
           />

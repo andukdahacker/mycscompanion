@@ -3,6 +3,7 @@
  */
 
 import type { UserRole, ExperienceLevel, PrimaryLanguage } from './domain.js'
+import type { CriterionResult } from './curriculum.js'
 
 export interface OnboardingRequest {
   readonly email: string
@@ -29,3 +30,30 @@ export interface UserProfile {
 export interface SkillAssessmentRequest {
   readonly passed: boolean
 }
+
+// --- Milestone Completion ---
+
+export interface NextMilestonePreview {
+  readonly id: string
+  readonly title: string
+  readonly position: number
+  readonly briefExcerpt: string
+}
+
+export interface MilestoneCompletionData {
+  readonly milestoneId: string
+  readonly milestoneName: string
+  readonly milestoneNumber: number
+  readonly completedAt: string
+  readonly criteriaResults: ReadonlyArray<CriterionResult>
+  readonly nextMilestone: NextMilestonePreview | null
+}
+
+export interface CompleteMilestoneRequest {
+  readonly submissionId: string
+}
+
+export interface CompleteMilestoneResponse {
+  readonly nextMilestoneId: string | null
+}
+
