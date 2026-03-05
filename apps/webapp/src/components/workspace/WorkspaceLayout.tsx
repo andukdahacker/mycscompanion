@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -9,12 +9,14 @@ import type { PanelSize } from '@mycscompanion/ui/src/components/ui/resizable'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
 import { MessageCircle, RefreshCw } from 'lucide-react'
 import { WorkspaceTopBar } from './WorkspaceTopBar'
+import { CodeEditor } from './CodeEditor'
 import { useWorkspaceUIStore } from '../../stores/workspace-ui-store'
 
 interface WorkspaceLayoutProps {
   readonly milestoneName: string
   readonly milestoneNumber: number
   readonly progress: number
+  readonly initialContent: string
   readonly onRun: () => void
   readonly onBenchmark: () => void
 }
@@ -23,6 +25,7 @@ function WorkspaceLayout({
   milestoneName,
   milestoneNumber,
   progress,
+  initialContent,
   onRun,
   onBenchmark,
 }: WorkspaceLayoutProps): React.ReactElement {
@@ -88,6 +91,12 @@ function WorkspaceLayout({
     }
   }, [tutorExpanded, tutorPanelRef, breakpointMode])
 
+  const skipToEditor = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault()
+    const editorTextarea = document.getElementById('code-editor-boundary')?.querySelector('textarea')
+    if (editorTextarea) editorTextarea.focus()
+  }, [])
+
   // Mobile layout
   if (breakpointMode === 'mobile') {
     return <MobileLayout milestoneName={milestoneName} milestoneNumber={milestoneNumber} progress={progress} />
@@ -98,12 +107,13 @@ function WorkspaceLayout({
   // Small desktop layout (1024-1279px)
   if (breakpointMode === 'small-desktop') {
     return (
-      <div className="flex h-screen flex-col bg-background">
+      <div id="workspace-container" tabIndex={-1} className="flex h-screen flex-col bg-background">
+        <a href="#code-editor-boundary" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-2 focus:bg-background focus:text-foreground" onClick={skipToEditor}>Skip to editor</a>
         <WorkspaceTopBar {...topBarProps} />
         <div className="relative flex-1">
           <ResizablePanelGroup orientation="vertical">
             <ResizablePanel defaultSize="70%" minSize="40%">
-              <EditorPlaceholder />
+              <CodeEditor initialContent={initialContent} onRun={onRun} />
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize="30%" minSize="120px">
@@ -134,20 +144,22 @@ function WorkspaceLayout({
             </>
           )}
         </div>
+        <div id="workspace-announcer" aria-live="polite" role="status" className="sr-only" />
       </div>
     )
   }
 
   // Desktop layout (>=1280px)
   return (
-    <div className="flex h-screen flex-col bg-background">
+    <div id="workspace-container" tabIndex={-1} className="flex h-screen flex-col bg-background">
+      <a href="#code-editor-boundary" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-2 focus:bg-background focus:text-foreground" onClick={skipToEditor}>Skip to editor</a>
       <WorkspaceTopBar {...topBarProps} />
       <ResizablePanelGroup orientation="horizontal" className="flex-1">
         {/* Left panel: editor + terminal */}
         <ResizablePanel defaultSize="70%" minSize="40%" maxSize="80%">
           <ResizablePanelGroup orientation="vertical">
             <ResizablePanel defaultSize="70%" minSize="40%">
-              <EditorPlaceholder />
+              <CodeEditor initialContent={initialContent} onRun={onRun} />
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize="30%" minSize="120px">
@@ -188,14 +200,7 @@ function WorkspaceLayout({
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
-    </div>
-  )
-}
-
-function EditorPlaceholder(): React.ReactElement {
-  return (
-    <div data-testid="editor-placeholder" className="flex h-full items-center justify-center text-muted-foreground">
-      Editor (Story 3.6)
+      <div id="workspace-announcer" aria-live="polite" role="status" className="sr-only" />
     </div>
   )
 }

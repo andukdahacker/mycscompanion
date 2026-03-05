@@ -1,7 +1,19 @@
 import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest'
 import { render, screen, cleanup, act } from '@testing-library/react'
+
 import { WorkspaceLayout } from './WorkspaceLayout'
 import { useWorkspaceUIStore } from '../../stores/workspace-ui-store'
+
+// Mock CodeEditor — do NOT render real Monaco in unit tests
+vi.mock('./CodeEditor', () => ({
+  CodeEditor: function MockCodeEditor(props: { initialContent: string; onRun: () => void }) {
+    return (
+      <div data-testid="code-editor" data-initial-content={props.initialContent}>
+        <button data-testid="mock-run-trigger" onClick={props.onRun}>Run</button>
+      </div>
+    )
+  },
+}))
 
 // Polyfills for react-resizable-panels in jsdom
 beforeAll(() => {
@@ -29,6 +41,7 @@ describe('WorkspaceLayout', () => {
     milestoneName: 'KV Store',
     milestoneNumber: 1,
     progress: 40,
+    initialContent: 'package main\n\nfunc main() {}\n',
     onRun: vi.fn(),
     onBenchmark: vi.fn(),
   }
@@ -65,10 +78,52 @@ describe('WorkspaceLayout', () => {
       expect(screen.getByText(/KV Store/)).toBeInTheDocument()
     })
 
-    it('should render editor placeholder', () => {
+    it('should render CodeEditor component', () => {
       render(<WorkspaceLayout {...defaultProps} />)
 
-      expect(screen.getByTestId('editor-placeholder')).toBeInTheDocument()
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument()
+    })
+
+    it('should pass initialContent to CodeEditor', () => {
+      render(<WorkspaceLayout {...defaultProps} />)
+
+      const editor = screen.getByTestId('code-editor')
+      expect(editor.getAttribute('data-initial-content')).toBe(defaultProps.initialContent)
+    })
+
+    it('should pass onRun to CodeEditor', async () => {
+      const onRun = vi.fn()
+      render(<WorkspaceLayout {...defaultProps} onRun={onRun} />)
+
+      const runTrigger = screen.getByTestId('mock-run-trigger')
+      await act(async () => {
+        runTrigger.click()
+      })
+
+      expect(onRun).toHaveBeenCalledOnce()
+    })
+
+    it('should have workspace-container with tabIndex={-1} for focus management', () => {
+      render(<WorkspaceLayout {...defaultProps} />)
+
+      const container = document.getElementById('workspace-container')
+      expect(container).toBeInTheDocument()
+      expect(container?.getAttribute('tabindex')).toBe('-1')
+    })
+
+    it('should render ARIA live region for screen reader announcements', () => {
+      render(<WorkspaceLayout {...defaultProps} />)
+
+      const announcer = document.getElementById('workspace-announcer')
+      expect(announcer).toBeInTheDocument()
+      expect(announcer?.getAttribute('aria-live')).toBe('polite')
+      expect(announcer?.getAttribute('role')).toBe('status')
+    })
+
+    it('should render skip-to-editor link', () => {
+      render(<WorkspaceLayout {...defaultProps} />)
+
+      expect(screen.getByText('Skip to editor')).toBeInTheDocument()
     })
 
     it('should render terminal placeholder', () => {

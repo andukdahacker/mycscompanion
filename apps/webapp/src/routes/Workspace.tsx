@@ -11,6 +11,7 @@ const MOCK_WORKSPACE_DATA = {
   milestoneName: 'KV Store',
   milestoneNumber: 1,
   progress: 0,
+  initialContent: 'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("Hello, World!")\n}\n',
 } as const
 
 function Workspace(): React.ReactElement {
@@ -55,6 +56,7 @@ function Workspace(): React.ReactElement {
       milestoneName={data.milestoneName}
       milestoneNumber={data.milestoneNumber}
       progress={data.progress}
+      initialContent={data.initialContent}
       onRun={handleRun}
       onBenchmark={handleBenchmark}
     />

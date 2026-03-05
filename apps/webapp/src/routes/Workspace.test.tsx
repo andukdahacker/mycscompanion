@@ -26,6 +26,13 @@ function setWindowWidth(width: number) {
   })
 }
 
+// Mock CodeEditor — do NOT render real Monaco in unit tests
+vi.mock('../components/workspace/CodeEditor', () => ({
+  CodeEditor: function MockCodeEditor(props: { initialContent: string; onRun: () => void }) {
+    return <div data-testid="code-editor" data-initial-content={props.initialContent} />
+  },
+}))
+
 // Mock useQuery to control loading/error states
 const mockUseQuery = vi.fn()
 vi.mock('@tanstack/react-query', async () => {
@@ -40,7 +47,7 @@ describe('Workspace', () => {
   beforeEach(() => {
     setWindowWidth(1280)
     mockUseQuery.mockReturnValue({
-      data: { milestoneName: 'KV Store', milestoneNumber: 1, progress: 0 },
+      data: { milestoneName: 'KV Store', milestoneNumber: 1, progress: 0, initialContent: 'package main\n\nfunc main() {}\n' },
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
@@ -67,10 +74,10 @@ describe('Workspace', () => {
     renderWorkspace()
 
     expect(screen.getByText(/Milestone 1/)).toBeInTheDocument()
-    expect(screen.getByTestId('editor-placeholder')).toBeInTheDocument()
+    expect(screen.getByTestId('code-editor')).toBeInTheDocument()
   })
 
-  it('should show WorkspaceSkeleton during loading after delay', () => {
+  it('should fall through to error state when loading but delay not elapsed and no data', () => {
     mockUseQuery.mockReturnValue({
       data: undefined,
       isLoading: true,
@@ -78,15 +85,12 @@ describe('Workspace', () => {
       refetch: vi.fn(),
     })
 
-    // useDelayedLoading returns false initially (loading hasn't exceeded 500ms)
-    // So skeleton should NOT show yet — component renders nothing visible
-    // The actual delayed loading behavior is tested in use-delayed-loading.test.ts
-    // Here we verify the integration: when showLoading becomes true, skeleton appears
+    // useDelayedLoading returns false initially (loading hasn't exceeded 500ms).
+    // With showLoading=false and data=undefined, component falls through to the
+    // !data check and renders error state. Delayed loading behavior is tested
+    // in use-delayed-loading.test.ts.
     renderWorkspace()
 
-    // With isLoading true but delay not elapsed, skeleton is NOT shown
-    // The component falls through to the !data check and shows error state
-    // because data is undefined and isError is false but !data is true
     expect(screen.getByTestId('workspace-error')).toBeInTheDocument()
   })
 
@@ -103,6 +107,13 @@ describe('Workspace', () => {
     expect(screen.getByTestId('workspace-error')).toBeInTheDocument()
     expect(screen.getByText(/failed to load workspace/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+  })
+
+  it('should pass initialContent to WorkspaceLayout', () => {
+    renderWorkspace()
+
+    const editor = screen.getByTestId('code-editor')
+    expect(editor.getAttribute('data-initial-content')).toContain('package main')
   })
 
   it('should render terminal placeholder in desktop mode', () => {

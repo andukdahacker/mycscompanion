@@ -83,7 +83,7 @@ development_status:
   3-3-submission-queue-and-worker-process: done
   3-4-submission-api-and-sse-streaming: done
   3-5-workspace-layout-and-resizable-panels: done
-  3-6-monaco-editor-integration: backlog
+  3-6-monaco-editor-integration: done
   3-7-terminal-output-and-error-presentation: backlog
   3-8-workspace-state-management: backlog
   epic-3-retrospective: optional
