@@ -6,6 +6,8 @@ import { type FlyClient, FlyApiError, buildMachineRequest } from '@mycscompanion
 import type { EventPublisher } from '../../shared/event-publisher.js'
 import type { ExecutionJobData } from '../../shared/queue.js'
 import type { ExecutionResult } from '../../shared/execution-types.js'
+import type { ContentLoader } from '../../plugins/curriculum/content-loader.js'
+import { evaluateCriteria, evaluateAllNotMet } from '../../shared/criteria-evaluator.js'
 
 /** Narrow job interface — only properties actually used by the processor */
 export interface ExecutionJob {
@@ -20,6 +22,7 @@ export interface ExecutionProcessorDeps {
   readonly logger: Logger
   readonly flyApiToken: string
   readonly flyAppName: string
+  readonly contentLoader: ContentLoader
 }
 
 const MAX_OUTPUT_BYTES = 65536
@@ -101,13 +104,43 @@ function truncateOutput(lines: string[], maxBytes: number): string[] {
 export function createExecutionProcessor(
   deps: ExecutionProcessorDeps,
 ): (job: ExecutionJob) => Promise<void> {
-  const { flyClient, flyConfig, db, eventPublisher, logger, flyApiToken, flyAppName } = deps
+  const { flyClient, flyConfig, db, eventPublisher, logger, flyApiToken, flyAppName, contentLoader } = deps
 
   return async (job: ExecutionJob): Promise<void> => {
     const { submissionId, milestoneId, code } = job.data
     let machineId: string | undefined
     const startTime = Date.now()
     let sequenceId = 1
+
+    /** Shared helper: look up milestone slug → load criteria → evaluate → publish SSE → return JSON string */
+    async function evaluateAndPublishCriteria(
+      evaluateFn: (criteria: ReadonlyArray<import('@mycscompanion/shared').AcceptanceCriterion>) => ReadonlyArray<import('@mycscompanion/shared').CriterionResult>,
+    ): Promise<string | null> {
+      try {
+        const milestone = await db
+          .selectFrom('milestones')
+          .select('slug')
+          .where('id', '=', milestoneId)
+          .executeTakeFirst()
+
+        if (!milestone) return null
+
+        const criteria = await contentLoader.loadAcceptanceCriteria(milestone.slug)
+        if (criteria.length === 0) return null
+
+        const criteriaResults = evaluateFn(criteria)
+        await eventPublisher.publish(submissionId, {
+          type: 'criteria_results',
+          results: criteriaResults,
+          data: '',
+          sequenceId: sequenceId++,
+        })
+        return JSON.stringify(criteriaResults)
+      } catch (criteriaErr) {
+        logger.warn({ err: criteriaErr instanceof Error ? criteriaErr : new Error(String(criteriaErr)), submissionId }, 'criteria_evaluation_failed')
+        return null
+      }
+    }
 
     try {
       // Update status to running (only if still queued — guards against retry resurrection)
@@ -204,6 +237,13 @@ export function createExecutionProcessor(
         compilationSucceeded: analysis.compilationSucceeded,
       }
 
+      // Evaluate acceptance criteria
+      const criteriaResultsJson = await evaluateAndPublishCriteria((criteria) =>
+        analysis.isUserError
+          ? evaluateAllNotMet(criteria, analysis.compilationSucceeded ? 'Runtime error' : 'Compilation failed')
+          : evaluateCriteria(criteria, executionResult),
+      )
+
       if (analysis.isUserError) {
         await eventPublisher.publish(submissionId, {
           type: 'error',
@@ -220,6 +260,7 @@ export function createExecutionProcessor(
             status: 'failed',
             execution_result: JSON.stringify(executionResult),
             error_message: analysis.compilationSucceeded ? 'Runtime error' : 'Compilation failed',
+            ...(criteriaResultsJson ? { criteria_results: criteriaResultsJson } : {}),
             updated_at: new Date(),
           })
           .where('id', '=', submissionId)
@@ -237,6 +278,7 @@ export function createExecutionProcessor(
           .set({
             status: 'completed',
             execution_result: JSON.stringify(executionResult),
+            ...(criteriaResultsJson ? { criteria_results: criteriaResultsJson } : {}),
             updated_at: new Date(),
           })
           .where('id', '=', submissionId)
@@ -258,6 +300,11 @@ export function createExecutionProcessor(
           }
         }
 
+        // Evaluate criteria as all not-met for timeout
+        const timeoutCriteriaJson = await evaluateAndPublishCriteria((criteria) =>
+          evaluateAllNotMet(criteria, 'Execution timed out'),
+        )
+
         await eventPublisher.publish(submissionId, {
           type: 'timeout',
           phase: 'compiling',
@@ -271,6 +318,7 @@ export function createExecutionProcessor(
           .set({
             status: 'failed',
             error_message: `Execution timed out after ${flyConfig.timeoutSeconds}s`,
+            ...(timeoutCriteriaJson ? { criteria_results: timeoutCriteriaJson } : {}),
             updated_at: new Date(),
           })
           .where('id', '=', submissionId)

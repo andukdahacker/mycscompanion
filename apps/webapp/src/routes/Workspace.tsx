@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useParams } from 'react-router'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
 import { WorkspaceLayout } from '../components/workspace/WorkspaceLayout'
@@ -8,6 +8,7 @@ import { useWorkspaceData } from '../hooks/use-workspace-data'
 import { useSubmitCode } from '../hooks/use-submit-code'
 import { useStuckDetection } from '../hooks/use-stuck-detection'
 import { useEditorStore } from '../stores/editor-store'
+import { useWorkspaceUIStore } from '../stores/workspace-ui-store'
 
 function Workspace(): React.ReactElement | null {
   const { milestoneId } = useParams<{ milestoneId: string }>()
@@ -15,7 +16,7 @@ function Workspace(): React.ReactElement | null {
   const { data, isLoading, isError, refetch } = useWorkspaceData(milestoneId)
   const showLoading = useDelayedLoading(isLoading)
 
-  const { submit, isRunning, outputLines } = useSubmitCode()
+  const { submit, isRunning, outputLines, criteriaResults } = useSubmitCode()
 
   const stuckDetectionConfig = data?.stuckDetection ?? { thresholdMinutes: 10, stage2OffsetSeconds: 60 }
   const { resetTimer } = useStuckDetection(stuckDetectionConfig)
@@ -43,6 +44,15 @@ function Workspace(): React.ReactElement | null {
     // No-op until Epic 7
     resetTimer()
   }, [resetTimer])
+
+  // Content-before-tools: show brief tab on initial load so user reads brief while Monaco lazy-loads
+  const briefShownRef = useRef(false)
+  useEffect(() => {
+    if (data?.brief && !briefShownRef.current) {
+      briefShownRef.current = true
+      useWorkspaceUIStore.getState().setActiveTerminalTab('brief')
+    }
+  }, [data?.brief])
 
   if (showLoading) {
     return <WorkspaceSkeleton />
@@ -76,6 +86,9 @@ function Workspace(): React.ReactElement | null {
       outputLines={outputLines}
       isRunning={isRunning}
       onRetry={handleRun}
+      brief={data.brief}
+      criteria={data.criteria}
+      criteriaResults={criteriaResults}
     />
   )
 }

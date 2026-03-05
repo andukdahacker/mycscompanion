@@ -36,6 +36,20 @@ export type ExecutionEvent =
       data: string
       sequenceId: number
     }>
+  | Readonly<{
+      type: 'criteria_results'
+      /** Mirrors CriterionResult from @mycscompanion/shared — keep in sync */
+      results: ReadonlyArray<{
+        readonly name: string
+        readonly order: number
+        readonly status: 'met' | 'not-met'
+        readonly expected: string | number
+        readonly actual: string | number | null
+        readonly errorHint?: string
+      }>
+      data: string
+      sequenceId: number
+    }>
   | Readonly<{ type: 'output'; phase: ExecutionPhase; data: string; sequenceId: number }>
   | Readonly<{ type: 'complete'; phase: ExecutionPhase; data: string; sequenceId: number }>
   | Readonly<{

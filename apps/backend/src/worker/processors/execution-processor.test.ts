@@ -11,6 +11,7 @@ import type { EventPublisher } from '../../shared/event-publisher.js'
 import type { ExecutionJobData } from '../../shared/queue.js'
 import { createExecutionProcessor } from './execution-processor.js'
 import type { ExecutionJob } from './execution-processor.js'
+import type { ContentLoader } from '../../plugins/curriculum/content-loader.js'
 import pino from 'pino'
 
 const TEST_UID = 'test-exec-proc-uid'
@@ -32,6 +33,19 @@ function createMockEventPublisher(): EventPublisher {
   return {
     publish: vi.fn().mockResolvedValue(undefined),
     setLogTTL: vi.fn().mockResolvedValue(undefined),
+  }
+}
+
+function createMockContentLoader(): ContentLoader {
+  return {
+    loadMilestoneBrief: vi.fn().mockResolvedValue(null),
+    loadAcceptanceCriteria: vi.fn().mockResolvedValue([]),
+    loadBenchmarkConfig: vi.fn().mockResolvedValue(null),
+    listConceptExplainerAssets: vi.fn().mockResolvedValue([]),
+    getStarterCodePath: vi.fn().mockResolvedValue(null),
+    loadStarterCode: vi.fn().mockResolvedValue(null),
+    invalidateCache: vi.fn().mockResolvedValue(undefined),
+    invalidateAllCaches: vi.fn().mockResolvedValue(undefined),
   }
 }
 
@@ -115,6 +129,7 @@ describe('ExecutionProcessor', () => {
       logger,
       flyApiToken: FLY_API_TOKEN,
       flyAppName: FLY_APP_NAME,
+      contentLoader: createMockContentLoader(),
     })
 
     await processor(createTestJob())
@@ -163,6 +178,7 @@ describe('ExecutionProcessor', () => {
       logger,
       flyApiToken: FLY_API_TOKEN,
       flyAppName: FLY_APP_NAME,
+      contentLoader: createMockContentLoader(),
     })
 
     await processor(createTestJob())
@@ -189,6 +205,7 @@ describe('ExecutionProcessor', () => {
       logger,
       flyApiToken: FLY_API_TOKEN,
       flyAppName: FLY_APP_NAME,
+      contentLoader: createMockContentLoader(),
     })
 
     await processor(createTestJob())
@@ -221,6 +238,7 @@ describe('ExecutionProcessor', () => {
       logger,
       flyApiToken: FLY_API_TOKEN,
       flyAppName: FLY_APP_NAME,
+      contentLoader: createMockContentLoader(),
     })
 
     await processor(createTestJob())
@@ -256,6 +274,7 @@ describe('ExecutionProcessor', () => {
       logger,
       flyApiToken: FLY_API_TOKEN,
       flyAppName: FLY_APP_NAME,
+      contentLoader: createMockContentLoader(),
     })
 
     await processor(createTestJob())
@@ -303,6 +322,7 @@ describe('ExecutionProcessor', () => {
       logger,
       flyApiToken: FLY_API_TOKEN,
       flyAppName: FLY_APP_NAME,
+      contentLoader: createMockContentLoader(),
     })
 
     // Should re-throw for BullMQ retry
@@ -337,6 +357,7 @@ describe('ExecutionProcessor', () => {
       logger,
       flyApiToken: FLY_API_TOKEN,
       flyAppName: FLY_APP_NAME,
+      contentLoader: createMockContentLoader(),
     })
 
     // Should NOT throw — non-retryable errors are swallowed
@@ -391,11 +412,183 @@ describe('ExecutionProcessor', () => {
       logger,
       flyApiToken: FLY_API_TOKEN,
       flyAppName: FLY_APP_NAME,
+      contentLoader: createMockContentLoader(),
     })
 
     // Non-retryable error — processor should complete without throwing
     await processor(createTestJob())
 
     expect(destroyCalled).toBe(true)
+  })
+
+  it('should evaluate criteria and publish results for successful execution', async () => {
+    // Seed milestone with known ID
+    await db
+      .insertInto('tracks')
+      .values({ id: 'track-1', name: 'Test Track', slug: 'test-track' })
+      .onConflict((oc) => oc.column('id').doNothing())
+      .execute()
+    await db
+      .insertInto('milestones')
+      .values({ id: 'ms-1', track_id: 'track-1', slug: '01-kv-store', title: 'KV Store', position: 1 })
+      .onConflict((oc) => oc.column('id').doNothing())
+      .execute()
+    await seedUserAndSubmission()
+
+    const eventPublisher = createMockEventPublisher()
+    const contentLoader = createMockContentLoader()
+    ;(contentLoader.loadAcceptanceCriteria as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { name: 'put-and-get', order: 1, assertion: { type: 'stdout-contains', expected: 'Hello, World!' } },
+    ])
+
+    const flyClient = new FlyClient({
+      apiToken: FLY_API_TOKEN,
+      appName: FLY_APP_NAME,
+      baseUrl: FLY_BASE_URL,
+    })
+
+    const processor = createExecutionProcessor({
+      flyClient,
+      flyConfig,
+      db,
+      eventPublisher,
+      logger,
+      flyApiToken: FLY_API_TOKEN,
+      flyAppName: FLY_APP_NAME,
+      contentLoader,
+    })
+
+    await processor(createTestJob())
+
+    // Verify criteria_results event was published
+    const publishCalls = (eventPublisher.publish as ReturnType<typeof vi.fn>).mock.calls as Array<[string, { type: string }]>
+    const criteriaEvent = publishCalls.find((call) => call[1].type === 'criteria_results')
+    expect(criteriaEvent).toBeDefined()
+
+    // Verify DB has criteria_results with correct content
+    const row = await db
+      .selectFrom('submissions')
+      .selectAll()
+      .where('id', '=', TEST_SUBMISSION_ID)
+      .executeTakeFirst()
+    expect(row?.criteria_results).not.toBeNull()
+    // JSONB column — DB driver may return object or string depending on driver
+    const parsedResults = (typeof row!.criteria_results === 'string'
+      ? JSON.parse(row!.criteria_results)
+      : row!.criteria_results) as Array<{ name: string; status: string }>
+    expect(parsedResults).toHaveLength(1)
+    expect(parsedResults[0]!.name).toBe('put-and-get')
+    expect(parsedResults[0]!.status).toBe('met')
+
+    // Clean up milestone/track data
+    await db.deleteFrom('milestones').where('id', '=', 'ms-1').execute()
+    await db.deleteFrom('tracks').where('id', '=', 'track-1').execute()
+  })
+
+  it('should mark all criteria not-met when execution fails', async () => {
+    await db
+      .insertInto('tracks')
+      .values({ id: 'track-1', name: 'Test Track', slug: 'test-track' })
+      .onConflict((oc) => oc.column('id').doNothing())
+      .execute()
+    await db
+      .insertInto('milestones')
+      .values({ id: 'ms-1', track_id: 'track-1', slug: '01-kv-store', title: 'KV Store', position: 1 })
+      .onConflict((oc) => oc.column('id').doNothing())
+      .execute()
+    await seedUserAndSubmission()
+
+    // Override logs to return Go compilation error
+    server.use(
+      http.get(`${FLY_LOGS_BASE}/api/v1/apps/${FLY_APP_NAME}/logs`, () => {
+        return new HttpResponse(
+          '{"timestamp":"2026-03-01T00:00:01Z","message":"./main.go:5:2: undefined: x","level":"info"}\n',
+          { status: 200 }
+        )
+      }),
+      // Override getMachine to return exit code 2
+      http.get(`${FLY_BASE_URL}/v1/apps/${FLY_APP_NAME}/machines/:machineId`, () => {
+        return HttpResponse.json({
+          id: 'test-machine-id',
+          instance_id: 'test-instance',
+          state: 'stopped',
+          region: 'iad',
+          events: [{ type: 'exit', exit_code: 2 }],
+        })
+      }),
+    )
+
+    const eventPublisher = createMockEventPublisher()
+    const contentLoader = createMockContentLoader()
+    ;(contentLoader.loadAcceptanceCriteria as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { name: 'put-and-get', order: 1, assertion: { type: 'stdout-contains', expected: 'PASS' } },
+      { name: 'exit-clean', order: 2, assertion: { type: 'exit-code-equals', expected: 0 } },
+    ])
+
+    const flyClient = new FlyClient({
+      apiToken: FLY_API_TOKEN,
+      appName: FLY_APP_NAME,
+      baseUrl: FLY_BASE_URL,
+    })
+
+    const processor = createExecutionProcessor({
+      flyClient,
+      flyConfig,
+      db,
+      eventPublisher,
+      logger,
+      flyApiToken: FLY_API_TOKEN,
+      flyAppName: FLY_APP_NAME,
+      contentLoader,
+    })
+
+    await processor(createTestJob())
+
+    const publishCalls = (eventPublisher.publish as ReturnType<typeof vi.fn>).mock.calls as Array<[string, { type: string; results?: ReadonlyArray<{ status: string }> }]>
+    const criteriaEvent = publishCalls.find((call) => call[1].type === 'criteria_results')
+    expect(criteriaEvent).toBeDefined()
+    const results = criteriaEvent![1].results!
+    expect(results).toHaveLength(2)
+    expect(results.every((r) => r.status === 'not-met')).toBe(true)
+
+    await db.deleteFrom('milestones').where('id', '=', 'ms-1').execute()
+    await db.deleteFrom('tracks').where('id', '=', 'track-1').execute()
+  })
+
+  it('should gracefully skip criteria evaluation when milestone not found', async () => {
+    await seedUserAndSubmission()
+
+    const eventPublisher = createMockEventPublisher()
+    const contentLoader = createMockContentLoader()
+
+    const flyClient = new FlyClient({
+      apiToken: FLY_API_TOKEN,
+      appName: FLY_APP_NAME,
+      baseUrl: FLY_BASE_URL,
+    })
+
+    const processor = createExecutionProcessor({
+      flyClient,
+      flyConfig,
+      db,
+      eventPublisher,
+      logger,
+      flyApiToken: FLY_API_TOKEN,
+      flyAppName: FLY_APP_NAME,
+      contentLoader,
+    })
+
+    await processor(createTestJob())
+
+    // Should NOT have called loadAcceptanceCriteria (milestone not found)
+    expect(contentLoader.loadAcceptanceCriteria).not.toHaveBeenCalled()
+
+    // Should still complete successfully
+    const row = await db
+      .selectFrom('submissions')
+      .selectAll()
+      .where('id', '=', TEST_SUBMISSION_ID)
+      .executeTakeFirst()
+    expect(row?.status).toBe('completed')
   })
 })

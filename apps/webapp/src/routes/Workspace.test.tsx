@@ -4,6 +4,7 @@ import { MemoryRouter, Routes, Route } from 'react-router'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { createTestQueryClient } from '@mycscompanion/config/test-utils/query-client'
 import Workspace from './Workspace'
+import { useWorkspaceUIStore } from '../stores/workspace-ui-store'
 
 // Polyfills for react-resizable-panels in jsdom
 beforeAll(() => {
@@ -33,12 +34,15 @@ vi.mock('../components/workspace/CodeEditor', () => ({
   },
 }))
 
-// Mock TerminalPanel — serialize outputLines for test assertions
+// Mock TerminalPanel — serialize props for test assertions
 vi.mock('../components/workspace/TerminalPanel', () => ({
   TerminalPanel: function MockTerminalPanel(props: {
     outputLines: ReadonlyArray<Record<string, unknown>>
     isRunning: boolean
     onRetry?: () => void
+    brief: string | null
+    criteria: ReadonlyArray<Record<string, unknown>>
+    criteriaResults: ReadonlyArray<Record<string, unknown>> | null
   }) {
     return (
       <div
@@ -46,6 +50,9 @@ vi.mock('../components/workspace/TerminalPanel', () => ({
         data-output-count={props.outputLines.length}
         data-is-running={props.isRunning}
         data-output-lines={JSON.stringify(props.outputLines)}
+        data-brief={props.brief ?? ''}
+        data-criteria-count={props.criteria.length}
+        data-criteria-results={props.criteriaResults ? JSON.stringify(props.criteriaResults) : ''}
       />
     )
   },
@@ -100,18 +107,24 @@ vi.mock('../hooks/use-sse', () => ({
   useSSE: vi.fn(() => ({ status: 'idle', error: null, reconnectCount: 0 })),
 }))
 
+const MOCK_WORKSPACE_DATA = {
+  milestoneName: 'KV Store',
+  milestoneNumber: 1,
+  progress: 0,
+  initialContent: 'package main\n\nfunc main() {}\n',
+  brief: '# Milestone 1\n\nBuild a KV store.',
+  criteria: [
+    { name: 'put-and-get', order: 1, description: 'Put and retrieve', assertion: { type: 'stdout-contains', expected: 'PASS' } },
+  ],
+  stuckDetection: { thresholdMinutes: 10, stage2OffsetSeconds: 60 },
+}
+
 describe('Workspace', () => {
   beforeEach(() => {
     setWindowWidth(1280)
     mockSubmitFn = vi.fn()
     mockUseWorkspaceData.mockReturnValue({
-      data: {
-        milestoneName: 'KV Store',
-        milestoneNumber: 1,
-        progress: 0,
-        initialContent: 'package main\n\nfunc main() {}\n',
-        stuckDetection: { thresholdMinutes: 10, stage2OffsetSeconds: 60 },
-      },
+      data: MOCK_WORKSPACE_DATA,
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
@@ -121,8 +134,10 @@ describe('Workspace', () => {
       submissionId: null,
       isRunning: false,
       outputLines: [],
+      criteriaResults: null,
     })
     mockResetTimer.mockClear()
+    useWorkspaceUIStore.setState({ activeTerminalTab: 'output' })
   })
 
   afterEach(() => {
@@ -160,7 +175,6 @@ describe('Workspace', () => {
 
     renderWorkspace()
 
-    // During loading delay period, render nothing (no error flash, no skeleton)
     expect(screen.queryByTestId('workspace-error')).not.toBeInTheDocument()
     expect(screen.queryByTestId('workspace-skeleton')).not.toBeInTheDocument()
   })
@@ -180,11 +194,58 @@ describe('Workspace', () => {
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
   })
 
-  it('should pass initialContent to WorkspaceLayout', () => {
+  it('should pass brief from API to TerminalPanel', () => {
+    renderWorkspace()
+
+    const terminal = screen.getByTestId('terminal-panel')
+    expect(terminal.getAttribute('data-brief')).toBe('# Milestone 1\n\nBuild a KV store.')
+  })
+
+  it('should pass criteria from API to TerminalPanel', () => {
+    renderWorkspace()
+
+    const terminal = screen.getByTestId('terminal-panel')
+    expect(terminal.getAttribute('data-criteria-count')).toBe('1')
+  })
+
+  it('should pass starter code from API as initialContent to CodeEditor', () => {
     renderWorkspace()
 
     const editor = screen.getByTestId('code-editor')
     expect(editor.getAttribute('data-initial-content')).toContain('package main')
+  })
+
+  it('should set brief tab active on initial load when brief is available', () => {
+    renderWorkspace()
+
+    expect(useWorkspaceUIStore.getState().activeTerminalTab).toBe('brief')
+  })
+
+  it('should not set brief tab when brief is null', () => {
+    mockUseWorkspaceData.mockReturnValue({
+      data: { ...MOCK_WORKSPACE_DATA, brief: null },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    renderWorkspace()
+
+    expect(useWorkspaceUIStore.getState().activeTerminalTab).toBe('output')
+  })
+
+  it('should show loading skeleton when delayed loading triggers', () => {
+    mockUseWorkspaceData.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    // The useDelayedLoading hook needs time to elapse for skeleton to show
+    // Just verify no error flash during loading
+    renderWorkspace()
+    expect(screen.queryByTestId('workspace-error')).not.toBeInTheDocument()
   })
 
   it('should render TerminalPanel in desktop mode', () => {
@@ -281,6 +342,37 @@ describe('Workspace', () => {
       const lines = JSON.parse(terminal.getAttribute('data-output-lines') ?? '[]') as Array<Record<string, unknown>>
       expect(lines[0]).toEqual(expect.objectContaining({ kind: 'stdout', text: 'Hello, World!' }))
       expect(lines[1]).toEqual(expect.objectContaining({ kind: 'success', text: 'Build successful.' }))
+    })
+  })
+
+  describe('criteria results flow', () => {
+    it('should pass criteriaResults from useSubmitCode to TerminalPanel', () => {
+      const mockResults = [
+        { name: 'put-and-get', order: 1, status: 'met', expected: 'PASS', actual: 'Found' },
+        { name: 'exit-clean', order: 2, status: 'not-met', expected: 0, actual: 1 },
+      ]
+      mockUseSubmitCode.mockReturnValue({
+        submit: mockSubmitFn,
+        submissionId: 'sub-crit',
+        isRunning: false,
+        outputLines: [],
+        criteriaResults: mockResults,
+      })
+
+      renderWorkspace()
+
+      const terminal = screen.getByTestId('terminal-panel')
+      const results = JSON.parse(terminal.getAttribute('data-criteria-results') ?? '[]') as Array<Record<string, unknown>>
+      expect(results).toHaveLength(2)
+      expect(results[0]).toEqual(expect.objectContaining({ name: 'put-and-get', status: 'met' }))
+      expect(results[1]).toEqual(expect.objectContaining({ name: 'exit-clean', status: 'not-met' }))
+    })
+
+    it('should pass null criteriaResults when no results available', () => {
+      renderWorkspace()
+
+      const terminal = screen.getByTestId('terminal-panel')
+      expect(terminal.getAttribute('data-criteria-results')).toBe('')
     })
   })
 

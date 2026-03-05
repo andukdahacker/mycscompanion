@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest'
 import { render, screen, cleanup, act } from '@testing-library/react'
 
+import type { AcceptanceCriterion } from '@mycscompanion/shared'
 import { WorkspaceLayout } from './WorkspaceLayout'
 import type { OutputLine } from './TerminalPanel'
 import { useWorkspaceUIStore } from '../../stores/workspace-ui-store'
@@ -22,12 +23,14 @@ vi.mock('./TerminalPanel', () => ({
     outputLines: ReadonlyArray<unknown>
     isRunning: boolean
     onRetry?: () => void
+    criteriaResults: ReadonlyArray<Record<string, unknown>> | null
   }) {
     return (
       <div
         data-testid="terminal-panel"
         data-output-count={props.outputLines.length}
         data-is-running={props.isRunning}
+        data-criteria-results={props.criteriaResults ? JSON.stringify(props.criteriaResults) : ''}
       >
         {props.onRetry && <button data-testid="terminal-retry" onClick={props.onRetry}>Retry</button>}
       </div>
@@ -67,6 +70,9 @@ describe('WorkspaceLayout', () => {
     outputLines: [] as ReadonlyArray<OutputLine>,
     isRunning: false,
     onRetry: vi.fn(),
+    brief: null as string | null,
+    criteria: [] as ReadonlyArray<AcceptanceCriterion>,
+    criteriaResults: null,
   }
 
   beforeEach(() => {
@@ -168,6 +174,25 @@ describe('WorkspaceLayout', () => {
       render(<WorkspaceLayout {...defaultProps} />)
 
       expect(screen.getByTestId('tutor-panel')).toBeInTheDocument()
+    })
+
+    it('should pass criteriaResults to TerminalPanel', () => {
+      const criteriaResults = [
+        { name: 'put-and-get', order: 1, status: 'met' as const, expected: 'PASS', actual: 'Found' },
+      ]
+      render(<WorkspaceLayout {...defaultProps} criteriaResults={criteriaResults} />)
+
+      const terminal = screen.getByTestId('terminal-panel')
+      const results = JSON.parse(terminal.getAttribute('data-criteria-results') ?? '[]') as Array<Record<string, unknown>>
+      expect(results).toHaveLength(1)
+      expect(results[0]).toEqual(expect.objectContaining({ name: 'put-and-get', status: 'met' }))
+    })
+
+    it('should pass null criteriaResults to TerminalPanel when no results', () => {
+      render(<WorkspaceLayout {...defaultProps} />)
+
+      const terminal = screen.getByTestId('terminal-panel')
+      expect(terminal.getAttribute('data-criteria-results')).toBe('')
     })
   })
 

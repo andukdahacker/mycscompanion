@@ -1,10 +1,12 @@
 import { useCallback, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ExecutionEvent } from '@mycscompanion/execution'
+import type { CriterionResult } from '@mycscompanion/shared'
 import { apiFetch, ApiError, API_URL } from '../lib/api-fetch'
 import { useSSE } from './use-sse'
 import { parseGoError } from '../components/workspace/parse-go-error'
 import { announceToScreenReader } from '../components/workspace/workspace-a11y'
+import { useWorkspaceUIStore } from '../stores/workspace-ui-store'
 import type { OutputLine } from '../components/workspace/TerminalPanel'
 
 interface SubmitCodeParams {
@@ -17,6 +19,7 @@ interface UseSubmitCodeResult {
   readonly submissionId: string | null
   readonly isRunning: boolean
   readonly outputLines: ReadonlyArray<OutputLine>
+  readonly criteriaResults: ReadonlyArray<CriterionResult> | null
 }
 
 function useSubmitCode(): UseSubmitCodeResult {
@@ -57,6 +60,13 @@ function useSubmitCode(): UseSubmitCodeResult {
   const { data: cachedOutput = [] } = useQuery<ReadonlyArray<OutputLine>>({
     queryKey: ['execution', 'output', submissionId],
     queryFn: () => Promise.resolve([] as ReadonlyArray<OutputLine>),
+    enabled: !!submissionId,
+    staleTime: Infinity,
+  })
+
+  const { data: criteriaResults = null } = useQuery<ReadonlyArray<CriterionResult> | null>({
+    queryKey: ['execution', 'criteria', submissionId],
+    queryFn: () => Promise.resolve(null),
     enabled: !!submissionId,
     staleTime: Infinity,
   })
@@ -160,17 +170,35 @@ function useSubmitCode(): UseSubmitCodeResult {
         case 'benchmark_result':
           appendOutput({ kind: 'stdout', text: event.data })
           break
+        case 'criteria_results': {
+          const sorted = [...event.results].sort((a, b) => a.order - b.order)
+          const subId = submissionIdRef.current
+          if (subId) {
+            queryClient.setQueryData<ReadonlyArray<CriterionResult> | null>(
+              ['execution', 'criteria', subId],
+              sorted,
+            )
+          }
+          useWorkspaceUIStore.getState().setActiveTerminalTab('criteria')
+          const metCount = sorted.filter((r) => r.status === 'met').length
+          announceToScreenReader(`Criteria evaluated: ${metCount} of ${sorted.length} met`)
+          break
+        }
         case 'heartbeat':
           break
       }
     },
-    [appendOutput, setOutput],
+    [appendOutput, setOutput, queryClient],
   )
 
   useSSE({ url: sseUrl, onEvent: handleSSEEvent })
 
   const submit = useCallback(
     (params: SubmitCodeParams): void => {
+      // Reset criteria results from previous submission
+      if (submissionIdRef.current) {
+        queryClient.removeQueries({ queryKey: ['execution', 'criteria', submissionIdRef.current] })
+      }
       setSubmissionId(null)
       setIsStreaming(false)
       setSubmitErrorOutput(null)
@@ -199,13 +227,13 @@ function useSubmitCode(): UseSubmitCodeResult {
         },
       })
     },
-    [submitMutation.mutate],
+    [submitMutation.mutate, queryClient],
   )
 
   const isRunning = submitMutation.isPending || isStreaming
   const outputLines = submitErrorOutput ?? cachedOutput
 
-  return { submit, submissionId, isRunning, outputLines }
+  return { submit, submissionId, isRunning, outputLines, criteriaResults }
 }
 
 export { useSubmitCode }

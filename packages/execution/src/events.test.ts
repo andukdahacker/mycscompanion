@@ -124,6 +124,37 @@ describe('ExecutionEvent', () => {
       }
     })
 
+    it('should narrow criteria_results event correctly', () => {
+      const event: ExecutionEvent = {
+        type: 'criteria_results',
+        results: [
+          {
+            name: 'put-and-get',
+            order: 1,
+            status: 'met',
+            expected: 'PASS: put-and-get',
+            actual: 'Found',
+          },
+          {
+            name: 'exit-clean',
+            order: 2,
+            status: 'not-met',
+            expected: 0,
+            actual: 1,
+            errorHint: 'Check exit code',
+          },
+        ],
+        data: '',
+        sequenceId: 12,
+      }
+      if (event.type === 'criteria_results') {
+        expect(event.results).toHaveLength(2)
+        expect(event.results[0]!.status).toBe('met')
+        expect(event.results[1]!.status).toBe('not-met')
+        expect(event.results[1]!.errorHint).toBe('Check exit code')
+      }
+    })
+
     it('should narrow output event correctly', () => {
       const event: ExecutionEvent = {
         type: 'output',
@@ -213,6 +244,8 @@ describe('ExecutionEvent', () => {
             return 'benchmark_progress'
           case 'benchmark_result':
             return 'benchmark_result'
+          case 'criteria_results':
+            return 'criteria_results'
           case 'output':
             return 'output'
           case 'complete':

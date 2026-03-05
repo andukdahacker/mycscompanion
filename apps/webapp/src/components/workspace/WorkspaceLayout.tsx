@@ -8,6 +8,7 @@ import {
 import type { PanelSize } from '@mycscompanion/ui/src/components/ui/resizable'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
 import { MessageCircle, RefreshCw } from 'lucide-react'
+import type { AcceptanceCriterion, CriterionResult } from '@mycscompanion/shared'
 import { WorkspaceTopBar } from './WorkspaceTopBar'
 import { CodeEditor } from './CodeEditor'
 import { TerminalPanel } from './TerminalPanel'
@@ -24,6 +25,9 @@ interface WorkspaceLayoutProps {
   readonly outputLines: ReadonlyArray<OutputLine>
   readonly isRunning: boolean
   readonly onRetry: () => void
+  readonly brief: string | null
+  readonly criteria: ReadonlyArray<AcceptanceCriterion>
+  readonly criteriaResults: ReadonlyArray<CriterionResult> | null
 }
 
 function WorkspaceLayout({
@@ -36,6 +40,9 @@ function WorkspaceLayout({
   outputLines,
   isRunning,
   onRetry,
+  brief,
+  criteria,
+  criteriaResults,
 }: WorkspaceLayoutProps): React.ReactElement {
   const breakpointMode = useWorkspaceUIStore((s) => s.breakpointMode)
   const setBreakpointMode = useWorkspaceUIStore((s) => s.setBreakpointMode)
@@ -125,7 +132,7 @@ function WorkspaceLayout({
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize="30%" minSize="120px">
-              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} />
+              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} />
             </ResizablePanel>
           </ResizablePanelGroup>
 
@@ -171,7 +178,7 @@ function WorkspaceLayout({
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize="30%" minSize="120px">
-              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} />
+              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} />
             </ResizablePanel>
           </ResizablePanelGroup>
         </ResizablePanel>

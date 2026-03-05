@@ -27,6 +27,19 @@ export interface AcceptanceCriterion {
   readonly errorHint?: string
 }
 
+// --- Criterion Result ---
+
+export type CriterionResultStatus = 'met' | 'not-met'
+
+export interface CriterionResult {
+  readonly name: string
+  readonly order: number
+  readonly status: CriterionResultStatus
+  readonly expected: string | number
+  readonly actual: string | number | null
+  readonly errorHint?: string
+}
+
 // --- Benchmark Config ---
 
 export type BenchmarkWorkloadType = 'inserts' | 'lookups' | 'range-scans' | 'mixed'
@@ -81,11 +94,11 @@ export interface MilestoneContent {
   readonly slug: string
   readonly title: string
   readonly position: number
-  readonly brief: string
+  readonly brief: string | null
   readonly acceptanceCriteria: readonly AcceptanceCriterion[]
   readonly benchmarkConfig: BenchmarkConfig | null
   readonly conceptExplainerAssets: readonly ConceptExplainerAsset[]
-  readonly starterCodePath: string | null
+  readonly starterCode: string | null
 }
 
 export interface MilestoneSummary {

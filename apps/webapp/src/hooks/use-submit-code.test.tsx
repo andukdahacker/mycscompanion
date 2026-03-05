@@ -4,7 +4,15 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { createTestQueryClient } from '@mycscompanion/config/test-utils/query-client'
 import type { QueryClient } from '@tanstack/react-query'
 import type { ExecutionEvent } from '@mycscompanion/execution'
+import type { CriterionResult } from '@mycscompanion/shared'
 import type { ReactNode } from 'react'
+import { useWorkspaceUIStore } from '../stores/workspace-ui-store'
+
+// Mock announceToScreenReader
+const mockAnnounce = vi.fn()
+vi.mock('../components/workspace/workspace-a11y', () => ({
+  announceToScreenReader: (...args: unknown[]) => mockAnnounce(...args),
+}))
 
 // Mock apiFetch
 const mockApiFetch = vi.fn()
@@ -43,6 +51,8 @@ describe('useSubmitCode', () => {
     queryClient = createTestQueryClient()
     capturedSSEOptions = null
     mockApiFetch.mockReset()
+    mockAnnounce.mockReset()
+    useWorkspaceUIStore.setState({ activeTerminalTab: 'output' })
   })
 
   afterEach(() => {
@@ -311,5 +321,85 @@ describe('useSubmitCode', () => {
         ])
       )
     })
+  })
+
+  it('should store criteria results in query cache on criteria_results event', async () => {
+    mockApiFetch.mockResolvedValue({ submissionId: 'sub-crit' })
+    const { useSubmitCode } = await import('./use-submit-code')
+    const { result } = renderHook(() => useSubmitCode(), { wrapper })
+
+    await act(async () => {
+      result.current.submit({ milestoneId: 'ms-1', code: 'package main' })
+    })
+
+    act(() => {
+      capturedSSEOptions?.onEvent?.({
+        type: 'criteria_results',
+        results: [
+          { name: 'put-and-get', order: 1, status: 'met', expected: 'PASS', actual: 'Found' },
+          { name: 'exit-clean', order: 2, status: 'not-met', expected: 0, actual: 1 },
+        ],
+        data: '',
+        sequenceId: 1,
+      })
+    })
+
+    await waitFor(() => {
+      expect(result.current.criteriaResults).toHaveLength(2)
+      expect(result.current.criteriaResults![0]!.status).toBe('met')
+      expect(result.current.criteriaResults![1]!.status).toBe('not-met')
+    })
+  })
+
+  it('should announce criteria results to screen reader', async () => {
+    mockApiFetch.mockResolvedValue({ submissionId: 'sub-a11y' })
+    const { useSubmitCode } = await import('./use-submit-code')
+    const { result } = renderHook(() => useSubmitCode(), { wrapper })
+
+    await act(async () => {
+      result.current.submit({ milestoneId: 'ms-1', code: 'package main' })
+    })
+
+    act(() => {
+      capturedSSEOptions?.onEvent?.({
+        type: 'criteria_results',
+        results: [
+          { name: 'a', order: 1, status: 'met', expected: 'X', actual: 'Found' },
+          { name: 'b', order: 2, status: 'not-met', expected: 'Y', actual: null },
+        ],
+        data: '',
+        sequenceId: 1,
+      })
+    })
+
+    expect(mockAnnounce).toHaveBeenCalledWith('Criteria evaluated: 1 of 2 met')
+  })
+
+  it('should switch to criteria tab when criteria_results event arrives', async () => {
+    mockApiFetch.mockResolvedValue({ submissionId: 'sub-tab' })
+    const { useSubmitCode } = await import('./use-submit-code')
+    const { result } = renderHook(() => useSubmitCode(), { wrapper })
+
+    await act(async () => {
+      result.current.submit({ milestoneId: 'ms-1', code: 'package main' })
+    })
+
+    act(() => {
+      capturedSSEOptions?.onEvent?.({
+        type: 'criteria_results',
+        results: [{ name: 'a', order: 1, status: 'met', expected: 'X', actual: 'Found' }],
+        data: '',
+        sequenceId: 1,
+      })
+    })
+
+    expect(useWorkspaceUIStore.getState().activeTerminalTab).toBe('criteria')
+  })
+
+  it('should return null criteriaResults initially', async () => {
+    const { useSubmitCode } = await import('./use-submit-code')
+    const { result } = renderHook(() => useSubmitCode(), { wrapper })
+
+    expect(result.current.criteriaResults).toBeNull()
   })
 })

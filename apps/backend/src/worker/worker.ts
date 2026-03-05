@@ -7,6 +7,7 @@ import { db, destroyDb } from '../shared/db.js'
 import { createBullMQConnection, EXECUTION_QUEUE_NAME } from '../shared/queue.js'
 import { createEventPublisher } from '../shared/event-publisher.js'
 import { createExecutionProcessor } from './processors/execution-processor.js'
+import { createContentLoader } from '../plugins/curriculum/content-loader.js'
 
 const logger = pino({
   level: process.env['LOG_LEVEL'] ?? 'info',
@@ -47,6 +48,9 @@ const flyConfig = {
 // Create event publisher
 const eventPublisher = createEventPublisher(redis)
 
+// Create content loader for criteria evaluation
+const contentLoader = createContentLoader({ redis })
+
 // Create execution processor
 const processor = createExecutionProcessor({
   flyClient,
@@ -56,6 +60,7 @@ const processor = createExecutionProcessor({
   logger,
   flyApiToken,
   flyAppName,
+  contentLoader,
 })
 
 // Create BullMQ Worker

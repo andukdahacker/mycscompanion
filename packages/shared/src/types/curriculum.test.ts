@@ -3,6 +3,8 @@ import type {
   AssertionType,
   AcceptanceCriterion,
   AcceptanceCriterionAssertion,
+  CriterionResultStatus,
+  CriterionResult,
   BenchmarkWorkload,
   BenchmarkWorkloadType,
   BenchmarkTargetMetrics,
@@ -58,6 +60,45 @@ describe('Curriculum types', () => {
     }
     expect(typeof strAssertion.expected).toBe('string')
     expect(typeof numAssertion.expected).toBe('number')
+  })
+
+  it('should compile CriterionResultStatus as met or not-met', () => {
+    const statuses: CriterionResultStatus[] = ['met', 'not-met']
+    expect(statuses).toHaveLength(2)
+  })
+
+  it('should compile CriterionResult with all fields', () => {
+    const result: CriterionResult = {
+      name: 'put-and-get',
+      order: 1,
+      status: 'met',
+      expected: 'PASS: put-and-get',
+      actual: 'Found',
+      errorHint: 'Check that Put stores the key.',
+    }
+    expect(result.status).toBe('met')
+  })
+
+  it('should compile CriterionResult with null actual', () => {
+    const result: CriterionResult = {
+      name: 'exit-clean',
+      order: 8,
+      status: 'not-met',
+      expected: 0,
+      actual: null,
+    }
+    expect(result.actual).toBeNull()
+  })
+
+  it('should compile CriterionResult without optional errorHint', () => {
+    const result: CriterionResult = {
+      name: 'test-criterion',
+      order: 2,
+      status: 'met',
+      expected: 'PASS',
+      actual: 'Found',
+    }
+    expect(result.errorHint).toBeUndefined()
   })
 
   it('should compile BenchmarkWorkload with all workload types', () => {
@@ -152,7 +193,7 @@ describe('Curriculum types', () => {
         ],
       },
       conceptExplainerAssets: [],
-      starterCodePath: 'content/milestones/01-kv-store/starter-code/',
+      starterCode: 'content/milestones/01-kv-store/starter-code/',
     }
     expect(content.slug).toBe('01-kv-store')
   })
@@ -168,10 +209,10 @@ describe('Curriculum types', () => {
       acceptanceCriteria: [],
       benchmarkConfig: null,
       conceptExplainerAssets: [],
-      starterCodePath: null,
+      starterCode: null,
     }
     expect(content.benchmarkConfig).toBeNull()
-    expect(content.starterCodePath).toBeNull()
+    expect(content.starterCode).toBeNull()
   })
 
   it('should compile MilestoneSummary', () => {
