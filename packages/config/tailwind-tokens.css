@@ -22,6 +22,9 @@
   --color-card: oklch(0.18 0.005 250);
   --color-card-foreground: oklch(0.93 0.005 250);
 
+  /* Elevated surface (slightly lighter than card) */
+  --color-elevated: oklch(0.21 0.005 250);
+
   /* Muted */
   --color-muted: oklch(0.22 0.005 250);
   --color-muted-foreground: oklch(0.63 0.01 250);

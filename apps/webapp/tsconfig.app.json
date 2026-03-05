@@ -31,5 +31,6 @@
       "@mycscompanion/config/*": ["../../packages/config/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.*", "src/**/*.spec.*"]
 }

@@ -10,6 +10,8 @@ import { Button } from '@mycscompanion/ui/src/components/ui/button'
 import { MessageCircle, RefreshCw } from 'lucide-react'
 import { WorkspaceTopBar } from './WorkspaceTopBar'
 import { CodeEditor } from './CodeEditor'
+import { TerminalPanel } from './TerminalPanel'
+import type { OutputLine } from './TerminalPanel'
 import { useWorkspaceUIStore } from '../../stores/workspace-ui-store'
 
 interface WorkspaceLayoutProps {
@@ -19,6 +21,9 @@ interface WorkspaceLayoutProps {
   readonly initialContent: string
   readonly onRun: () => void
   readonly onBenchmark: () => void
+  readonly outputLines: ReadonlyArray<OutputLine>
+  readonly isRunning: boolean
+  readonly onRetry: () => void
 }
 
 function WorkspaceLayout({
@@ -28,6 +33,9 @@ function WorkspaceLayout({
   initialContent,
   onRun,
   onBenchmark,
+  outputLines,
+  isRunning,
+  onRetry,
 }: WorkspaceLayoutProps): React.ReactElement {
   const breakpointMode = useWorkspaceUIStore((s) => s.breakpointMode)
   const setBreakpointMode = useWorkspaceUIStore((s) => s.setBreakpointMode)
@@ -117,7 +125,7 @@ function WorkspaceLayout({
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize="30%" minSize="120px">
-              <TerminalPlaceholder />
+              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} />
             </ResizablePanel>
           </ResizablePanelGroup>
 
@@ -163,7 +171,7 @@ function WorkspaceLayout({
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize="30%" minSize="120px">
-              <TerminalPlaceholder />
+              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} />
             </ResizablePanel>
           </ResizablePanelGroup>
         </ResizablePanel>
@@ -201,14 +209,6 @@ function WorkspaceLayout({
         </ResizablePanel>
       </ResizablePanelGroup>
       <div id="workspace-announcer" aria-live="polite" role="status" className="sr-only" />
-    </div>
-  )
-}
-
-function TerminalPlaceholder(): React.ReactElement {
-  return (
-    <div data-testid="terminal-placeholder" className="flex h-full items-center justify-center border-t text-muted-foreground">
-      Terminal (Story 3.7)
     </div>
   )
 }

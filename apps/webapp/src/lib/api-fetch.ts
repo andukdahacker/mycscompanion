@@ -77,4 +77,4 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
   return response.json() as Promise<T>
 }
 
-export { apiFetch, ApiError }
+export { apiFetch, ApiError, API_URL }

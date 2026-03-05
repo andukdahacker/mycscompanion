@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vite
 import { render, screen, cleanup, act } from '@testing-library/react'
 
 import { WorkspaceLayout } from './WorkspaceLayout'
+import type { OutputLine } from './TerminalPanel'
 import { useWorkspaceUIStore } from '../../stores/workspace-ui-store'
 
 // Mock CodeEditor — do NOT render real Monaco in unit tests
@@ -10,6 +11,25 @@ vi.mock('./CodeEditor', () => ({
     return (
       <div data-testid="code-editor" data-initial-content={props.initialContent}>
         <button data-testid="mock-run-trigger" onClick={props.onRun}>Run</button>
+      </div>
+    )
+  },
+}))
+
+// Mock TerminalPanel
+vi.mock('./TerminalPanel', () => ({
+  TerminalPanel: function MockTerminalPanel(props: {
+    outputLines: ReadonlyArray<unknown>
+    isRunning: boolean
+    onRetry?: () => void
+  }) {
+    return (
+      <div
+        data-testid="terminal-panel"
+        data-output-count={props.outputLines.length}
+        data-is-running={props.isRunning}
+      >
+        {props.onRetry && <button data-testid="terminal-retry" onClick={props.onRetry}>Retry</button>}
       </div>
     )
   },
@@ -44,6 +64,9 @@ describe('WorkspaceLayout', () => {
     initialContent: 'package main\n\nfunc main() {}\n',
     onRun: vi.fn(),
     onBenchmark: vi.fn(),
+    outputLines: [] as ReadonlyArray<OutputLine>,
+    isRunning: false,
+    onRetry: vi.fn(),
   }
 
   beforeEach(() => {
@@ -126,10 +149,19 @@ describe('WorkspaceLayout', () => {
       expect(screen.getByText('Skip to editor')).toBeInTheDocument()
     })
 
-    it('should render terminal placeholder', () => {
+    it('should render TerminalPanel', () => {
       render(<WorkspaceLayout {...defaultProps} />)
 
-      expect(screen.getByTestId('terminal-placeholder')).toBeInTheDocument()
+      expect(screen.getByTestId('terminal-panel')).toBeInTheDocument()
+    })
+
+    it('should pass outputLines, isRunning, and onRetry to TerminalPanel', () => {
+      const onRetry = vi.fn()
+      render(<WorkspaceLayout {...defaultProps} isRunning={true} onRetry={onRetry} />)
+
+      const terminal = screen.getByTestId('terminal-panel')
+      expect(terminal.getAttribute('data-is-running')).toBe('true')
+      expect(screen.getByTestId('terminal-retry')).toBeInTheDocument()
     })
 
     it('should render tutor panel', () => {
@@ -257,7 +289,9 @@ describe('WorkspaceLayout', () => {
 
       render(<WorkspaceLayout {...defaultProps} />)
 
-      expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument()
+      // Multiple retry buttons may exist (terminal + tutor), so use getAllByRole
+      const retryButtons = screen.getAllByRole('button', { name: /retry/i })
+      expect(retryButtons.length).toBeGreaterThanOrEqual(1)
     })
   })
 })
