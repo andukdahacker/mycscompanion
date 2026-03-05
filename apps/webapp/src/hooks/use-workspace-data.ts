@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
+import type { MilestoneContent, AcceptanceCriterion } from '@mycscompanion/shared'
+import { apiFetch } from '../lib/api-fetch'
 
 interface StuckDetectionConfig {
   readonly thresholdMinutes: number
@@ -11,28 +13,38 @@ interface WorkspaceData {
   readonly progress: number
   readonly initialContent: string
   readonly brief: string | null
-  readonly criteria: ReadonlyArray<string>
+  readonly criteria: ReadonlyArray<AcceptanceCriterion>
   readonly stuckDetection: StuckDetectionConfig
 }
 
-// Placeholder mock data — real API (GET /api/workspace/:milestoneId) comes in Epic 4
-const MOCK_WORKSPACE_DATA: WorkspaceData = {
-  milestoneName: 'KV Store',
-  milestoneNumber: 1,
-  progress: 0,
-  initialContent: 'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("Hello, World!")\n}\n',
-  brief: null,
-  criteria: [],
-  stuckDetection: {
-    thresholdMinutes: 10,
-    stage2OffsetSeconds: 60,
-  },
-}
+const DEFAULT_GO_TEMPLATE = `package main
 
+import "fmt"
+
+func main() {
+\tfmt.Println("Hello, World!")
+}
+`
+
+// Uses curriculum endpoint directly until Epic 5 introduces the combined workspace endpoint.
+// Query key is kept stable so downstream cache consumers don't need changes.
 function useWorkspaceData(milestoneId: string | undefined) {
   return useQuery({
     queryKey: ['workspace', 'get', milestoneId],
-    queryFn: () => Promise.resolve(MOCK_WORKSPACE_DATA),
+    queryFn: async (): Promise<WorkspaceData> => {
+      const content = await apiFetch<MilestoneContent>(
+        `/api/curriculum/milestones/${milestoneId}`
+      )
+      return {
+        milestoneName: content.title,
+        milestoneNumber: content.position,
+        progress: 0, // Hardcoded until Epic 5
+        initialContent: content.starterCode || DEFAULT_GO_TEMPLATE,
+        brief: content.brief,
+        criteria: content.acceptanceCriteria,
+        stuckDetection: { thresholdMinutes: 10, stage2OffsetSeconds: 60 }, // Hardcoded until Epic 6
+      }
+    },
     staleTime: 5 * 60 * 1000,
     enabled: !!milestoneId,
   })

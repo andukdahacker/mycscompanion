@@ -4,6 +4,28 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { createTestQueryClient } from '@mycscompanion/config/test-utils/query-client'
 import type { QueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
+import type { MilestoneContent } from '@mycscompanion/shared'
+
+const mockApiFetch = vi.fn()
+
+vi.mock('../lib/api-fetch', () => ({
+  apiFetch: (...args: unknown[]) => mockApiFetch(...args),
+}))
+
+const MOCK_MILESTONE_CONTENT: MilestoneContent = {
+  milestoneId: 'ms-1',
+  trackId: 'track-1',
+  slug: '01-kv-store',
+  title: 'Simple Key-Value Store',
+  position: 1,
+  brief: '# Milestone 1\n\nBuild a KV store.',
+  acceptanceCriteria: [
+    { name: 'put-and-get', order: 1, description: 'Put and get', assertion: { type: 'stdout-contains', expected: 'PASS' } },
+  ],
+  benchmarkConfig: null,
+  conceptExplainerAssets: [],
+  starterCode: 'package main\n\nfunc main() {}\n',
+}
 
 describe('useWorkspaceData', () => {
   let queryClient: QueryClient
@@ -14,15 +36,25 @@ describe('useWorkspaceData', () => {
 
   beforeEach(() => {
     queryClient = createTestQueryClient()
+    mockApiFetch.mockResolvedValue(MOCK_MILESTONE_CONTENT)
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
-  it('should return mock workspace data with correct shape', async () => {
+  it('should call apiFetch with correct curriculum endpoint', async () => {
     const { useWorkspaceData } = await import('./use-workspace-data')
-    const { result } = renderHook(() => useWorkspaceData('milestone-1'), { wrapper })
+    renderHook(() => useWorkspaceData('01-kv-store'), { wrapper })
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith('/api/curriculum/milestones/01-kv-store')
+    })
+  })
+
+  it('should map MilestoneContent to WorkspaceData shape', async () => {
+    const { useWorkspaceData } = await import('./use-workspace-data')
+    const { result } = renderHook(() => useWorkspaceData('01-kv-store'), { wrapper })
 
     await waitFor(() => {
       expect(result.current.data).toBeDefined()
@@ -30,12 +62,28 @@ describe('useWorkspaceData', () => {
 
     expect(result.current.data).toEqual(
       expect.objectContaining({
-        milestoneName: expect.any(String),
-        milestoneNumber: expect.any(Number),
-        progress: expect.any(Number),
-        initialContent: expect.any(String),
+        milestoneName: 'Simple Key-Value Store',
+        milestoneNumber: 1,
+        progress: 0,
+        initialContent: 'package main\n\nfunc main() {}\n',
+        brief: '# Milestone 1\n\nBuild a KV store.',
+        criteria: MOCK_MILESTONE_CONTENT.acceptanceCriteria,
       })
     )
+  })
+
+  it('should fall back to default Go template when starterCode is null', async () => {
+    mockApiFetch.mockResolvedValue({ ...MOCK_MILESTONE_CONTENT, starterCode: null })
+
+    const { useWorkspaceData } = await import('./use-workspace-data')
+    const { result } = renderHook(() => useWorkspaceData('01-kv-store'), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.data).toBeDefined()
+    })
+
+    expect(result.current.data?.initialContent).toContain('package main')
+    expect(result.current.data?.initialContent).toContain('fmt.Println')
   })
 
   it('should include stuck detection thresholds in response', async () => {
@@ -73,7 +121,6 @@ describe('useWorkspaceData', () => {
       expect(result.current.data).toBeDefined()
     })
 
-    // Verify query is not stale (staleTime is 5 min, we just fetched)
     const queryState = queryClient.getQueryState(['workspace', 'get', 'milestone-1'])
     expect(queryState?.isInvalidated).toBe(false)
   })
@@ -82,7 +129,6 @@ describe('useWorkspaceData', () => {
     const { useWorkspaceData } = await import('./use-workspace-data')
     const { result } = renderHook(() => useWorkspaceData('milestone-1'), { wrapper })
 
-    // Initially may be loading
     expect(typeof result.current.isLoading).toBe('boolean')
     expect(typeof result.current.isError).toBe('boolean')
 

@@ -60,6 +60,13 @@ describe('ContentLoader integration', () => {
       const assets = await loader.listConceptExplainerAssets('01-kv-store')
       expect(assets).toEqual([])
     })
+
+    it('should load starter code content from main.go', async () => {
+      const code = await loader.loadStarterCode('01-kv-store')
+      expect(code).not.toBeNull()
+      expect(code).toContain('package main')
+      expect(code).toContain('func main()')
+    })
   })
 
   describe('02-05 milestones (placeholder content)', () => {
@@ -76,6 +83,11 @@ describe('ContentLoader integration', () => {
     it('should return null starterCodePath for .gitkeep only dirs', async () => {
       const path = await loader.getStarterCodePath('02-storage-engine')
       expect(path).toBeNull()
+    })
+
+    it('should return null starterCode for .gitkeep only dirs', async () => {
+      const code = await loader.loadStarterCode('02-storage-engine')
+      expect(code).toBeNull()
     })
 
     it('should still load brief markdown for placeholder milestones', async () => {

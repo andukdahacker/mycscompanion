@@ -6,14 +6,14 @@ interface WorkspaceUIState {
   // Panel state
   tutorExpanded: boolean
   tutorAvailable: boolean // 3 visual states: collapsed, expanded, unavailable (retry button)
-  activeTerminalTab: 'output' | 'criteria'
+  activeTerminalTab: 'brief' | 'output' | 'criteria'
   // Breakpoint — set once on mount, no reactive updates
   breakpointMode: BreakpointMode
   // Actions
   setTutorExpanded: (expanded: boolean) => void
   toggleTutor: () => void
   setTutorAvailable: (available: boolean) => void
-  setActiveTerminalTab: (tab: 'output' | 'criteria') => void
+  setActiveTerminalTab: (tab: 'brief' | 'output' | 'criteria') => void
   setBreakpointMode: (mode: BreakpointMode) => void
 }
 

@@ -28,6 +28,7 @@ export interface ContentLoader {
   loadBenchmarkConfig(slug: string): Promise<BenchmarkConfig | null>
   listConceptExplainerAssets(slug: string): Promise<readonly ConceptExplainerAsset[]>
   getStarterCodePath(slug: string): Promise<string | null>
+  loadStarterCode(slug: string): Promise<string | null>
   invalidateCache(slug: string): Promise<void>
   invalidateAllCaches(): Promise<void>
 }
@@ -50,6 +51,7 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
     benchmarkConfig: BenchmarkConfig | null
     conceptExplainerAssets: readonly ConceptExplainerAsset[]
     starterCodePath: string | null
+    starterCode: string | null
   }
 
   const emptyCachedContent: CachedMilestoneContent = {
@@ -58,6 +60,7 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
     benchmarkConfig: null,
     conceptExplainerAssets: [],
     starterCodePath: null,
+    starterCode: null,
   }
 
   async function loadAndCache(slug: string): Promise<CachedMilestoneContent> {
@@ -70,13 +73,14 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
       return JSON.parse(cached) as CachedMilestoneContent
     }
 
-    const [brief, acceptanceCriteria, benchmarkConfig, conceptExplainerAssets, starterCodePath] =
+    const [brief, acceptanceCriteria, benchmarkConfig, conceptExplainerAssets, starterCodePath, starterCode] =
       await Promise.all([
         readBrief(slug),
         readAcceptanceCriteria(slug),
         readBenchmarkConfig(slug),
         readConceptExplainerAssets(slug),
         readStarterCodePath(slug),
+        readStarterCode(slug),
       ])
 
     const content: CachedMilestoneContent = {
@@ -85,9 +89,10 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
       benchmarkConfig,
       conceptExplainerAssets,
       starterCodePath,
+      starterCode,
     }
 
-    await redis.set(cacheKey(slug), JSON.stringify(content))
+    await redis.set(cacheKey(slug), JSON.stringify(content), 'EX', 3600)
 
     return content
   }
@@ -162,6 +167,18 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
     }
   }
 
+  async function readStarterCode(slug: string): Promise<string | null> {
+    try {
+      const content = await readFile(join(milestoneDir(slug), 'starter-code', 'main.go'), 'utf-8')
+      return content
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        log?.error({ slug, error: String(err) }, 'Failed to read starter code')
+      }
+      return null
+    }
+  }
+
   return {
     async loadMilestoneBrief(slug: string): Promise<string | null> {
       const content = await loadAndCache(slug)
@@ -186,6 +203,11 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
     async getStarterCodePath(slug: string): Promise<string | null> {
       const content = await loadAndCache(slug)
       return content.starterCodePath
+    },
+
+    async loadStarterCode(slug: string): Promise<string | null> {
+      const content = await loadAndCache(slug)
+      return content.starterCode
     },
 
     async invalidateCache(slug: string): Promise<void> {

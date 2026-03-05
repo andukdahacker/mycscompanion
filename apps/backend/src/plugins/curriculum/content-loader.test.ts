@@ -315,6 +315,69 @@ describe('ContentLoader', () => {
     })
   })
 
+  describe('loadStarterCode', () => {
+    it('should return file content when main.go exists with content', async () => {
+      const starterCode = 'package main\n\nfunc main() {}\n'
+      setupFs(
+        {
+          [`${CONTENT_ROOT}/01-kv-store/brief.md`]: BRIEF_CONTENT,
+          [`${CONTENT_ROOT}/01-kv-store/acceptance-criteria.yaml`]: ACCEPTANCE_CRITERIA_YAML,
+          [`${CONTENT_ROOT}/01-kv-store/benchmark-config.yaml`]: BENCHMARK_CONFIG_YAML,
+          [`${CONTENT_ROOT}/01-kv-store/starter-code/main.go`]: starterCode,
+        },
+        {
+          [`${CONTENT_ROOT}/01-kv-store/assets`]: ['.gitkeep'],
+          [`${CONTENT_ROOT}/01-kv-store/starter-code`]: ['main.go'],
+        }
+      )
+
+      const code = await loader.loadStarterCode('01-kv-store')
+      expect(code).toBe(starterCode)
+    })
+
+    it('should return null when main.go does not exist', async () => {
+      setupFs(
+        {
+          [`${CONTENT_ROOT}/02-storage-engine/brief.md`]: '# Milestone 2',
+          [`${CONTENT_ROOT}/02-storage-engine/acceptance-criteria.yaml`]: EMPTY_CRITERIA_YAML,
+          [`${CONTENT_ROOT}/02-storage-engine/benchmark-config.yaml`]: EMPTY_BENCHMARK_YAML,
+        },
+        {
+          [`${CONTENT_ROOT}/02-storage-engine/assets`]: [],
+          [`${CONTENT_ROOT}/02-storage-engine/starter-code`]: ['.gitkeep'],
+        }
+      )
+
+      const code = await loader.loadStarterCode('02-storage-engine')
+      expect(code).toBeNull()
+    })
+
+    it('should return null when starter-code directory only has .gitkeep', async () => {
+      setupFs(
+        {
+          [`${CONTENT_ROOT}/03-wal/brief.md`]: '# Milestone 3',
+          [`${CONTENT_ROOT}/03-wal/acceptance-criteria.yaml`]: EMPTY_CRITERIA_YAML,
+          [`${CONTENT_ROOT}/03-wal/benchmark-config.yaml`]: EMPTY_BENCHMARK_YAML,
+        },
+        {
+          [`${CONTENT_ROOT}/03-wal/assets`]: [],
+          [`${CONTENT_ROOT}/03-wal/starter-code`]: ['.gitkeep'],
+        }
+      )
+
+      const code = await loader.loadStarterCode('03-wal')
+      expect(code).toBeNull()
+    })
+
+    it('should return null on read error', async () => {
+      mockReadFile.mockRejectedValue(new Error('Permission denied'))
+      mockReaddir.mockRejectedValue(new Error('Permission denied'))
+
+      const code = await loader.loadStarterCode('01-kv-store')
+      expect(code).toBeNull()
+    })
+  })
+
   describe('Redis caching', () => {
     it('should cache content on first load and return cached on second', async () => {
       setupFs(
@@ -334,7 +397,9 @@ describe('ContentLoader', () => {
       expect(mockRedis.set).toHaveBeenCalledOnce()
       expect(mockRedis.set).toHaveBeenCalledWith(
         'curriculum:milestone:01-kv-store',
-        expect.any(String)
+        expect.any(String),
+        'EX',
+        3600
       )
 
       const brief2 = await loader.loadMilestoneBrief('01-kv-store')
@@ -349,6 +414,7 @@ describe('ContentLoader', () => {
         benchmarkConfig: null,
         conceptExplainerAssets: [],
         starterCodePath: null,
+        starterCode: null,
       })
 
       mockRedis.get.mockResolvedValueOnce(cachedData)
