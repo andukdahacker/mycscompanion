@@ -8,7 +8,20 @@
       "Bash(npm view:*)",
       "Bash(ls:*)",
       "Bash(docker compose:*)",
-      "Bash(find .:*)"
+      "Bash(find .:*)",
+      "WebFetch(domain:ui.shadcn.com)",
+      "WebFetch(domain:firebase.google.com)",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:docs.cloud.google.com)",
+      "Bash(npx vitest:*)",
+      "WebFetch(domain:fly.io)",
+      "WebFetch(domain:docs.machines.dev)",
+      "WebFetch(domain:community.fly.io)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:pmnd.rs)",
+      "Bash(curl:*)",
+      "WebFetch(domain:react-resizable-panels.vercel.app)"
     ]
   }
 }

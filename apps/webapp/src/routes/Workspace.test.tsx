@@ -43,6 +43,7 @@ vi.mock('../components/workspace/TerminalPanel', () => ({
     brief: string | null
     criteria: ReadonlyArray<Record<string, unknown>>
     criteriaResults: ReadonlyArray<Record<string, unknown>> | null
+    conceptExplainerAssets: ReadonlyArray<Record<string, unknown>>
   }) {
     return (
       <div
@@ -53,6 +54,7 @@ vi.mock('../components/workspace/TerminalPanel', () => ({
         data-brief={props.brief ?? ''}
         data-criteria-count={props.criteria.length}
         data-criteria-results={props.criteriaResults ? JSON.stringify(props.criteriaResults) : ''}
+        data-concept-assets-count={props.conceptExplainerAssets.length}
       />
     )
   },
@@ -117,6 +119,9 @@ const MOCK_WORKSPACE_DATA = {
     { name: 'put-and-get', order: 1, description: 'Put and retrieve', assertion: { type: 'stdout-contains', expected: 'PASS' } },
   ],
   stuckDetection: { thresholdMinutes: 10, stage2OffsetSeconds: 60 },
+  conceptExplainerAssets: [
+    { name: 'kv-ops.svg', path: '/assets/kv-ops.svg', altText: 'KV operations', title: 'KV Ops' },
+  ],
 }
 
 describe('Workspace', () => {
@@ -381,6 +386,29 @@ describe('Workspace', () => {
       renderWorkspace()
 
       expect(mockUseWorkspaceData).toHaveBeenCalledWith('milestone-1')
+    })
+  })
+
+  describe('conceptExplainerAssets flow', () => {
+    it('should pass conceptExplainerAssets from workspace data to TerminalPanel', () => {
+      renderWorkspace()
+
+      const terminal = screen.getByTestId('terminal-panel')
+      expect(terminal.getAttribute('data-concept-assets-count')).toBe('1')
+    })
+
+    it('should pass empty conceptExplainerAssets when none exist', () => {
+      mockUseWorkspaceData.mockReturnValue({
+        data: { ...MOCK_WORKSPACE_DATA, conceptExplainerAssets: [] },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      })
+
+      renderWorkspace()
+
+      const terminal = screen.getByTestId('terminal-panel')
+      expect(terminal.getAttribute('data-concept-assets-count')).toBe('0')
     })
   })
 })

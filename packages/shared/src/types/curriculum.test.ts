@@ -162,13 +162,26 @@ describe('Curriculum types', () => {
     expect(config.benchmarks).toHaveLength(1)
   })
 
-  it('should compile ConceptExplainerAsset', () => {
+  it('should compile ConceptExplainerAsset with all fields', () => {
     const asset: ConceptExplainerAsset = {
       name: 'kv-store-flow.svg',
       path: '/assets/milestones/01-kv-store/kv-store-flow.svg',
       altText: 'KV store data flow',
+      title: 'Key-Value Store Operations',
     }
     expect(asset.name).toBe('kv-store-flow.svg')
+    expect(asset.title).toBe('Key-Value Store Operations')
+  })
+
+  it('should compile ConceptExplainerAsset with null title and altText', () => {
+    const asset: ConceptExplainerAsset = {
+      name: 'diagram.svg',
+      path: '/assets/milestones/01-kv-store/diagram.svg',
+      altText: null,
+      title: null,
+    }
+    expect(asset.altText).toBeNull()
+    expect(asset.title).toBeNull()
   })
 
   it('should compile MilestoneContent with all fields', () => {

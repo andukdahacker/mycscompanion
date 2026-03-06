@@ -119,6 +119,7 @@ function Workspace(): React.ReactElement | null {
       criteriaResults={criteriaResults}
       allCriteriaMet={allCriteriaMet}
       onCompleteMilestone={handleCompleteMilestone}
+      conceptExplainerAssets={data.conceptExplainerAssets}
     />
   )
 }

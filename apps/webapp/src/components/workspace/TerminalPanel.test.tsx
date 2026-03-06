@@ -3,9 +3,15 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { TerminalPanel } from './TerminalPanel'
 import type { OutputLine } from './TerminalPanel'
 import { useWorkspaceUIStore } from '../../stores/workspace-ui-store'
-import type { AcceptanceCriterion, CriterionResult } from '@mycscompanion/shared'
+import type { AcceptanceCriterion, ConceptExplainerAsset, CriterionResult } from '@mycscompanion/shared'
 
-// Mock ErrorPresentation to isolate TerminalPanel tests
+// Mock ErrorPresentation and ConceptExplainers to isolate TerminalPanel tests
+vi.mock('./ConceptExplainers', () => ({
+  ConceptExplainers: function MockConceptExplainers(props: { assets: readonly ConceptExplainerAsset[] }) {
+    return <div data-testid="concept-explainers">{props.assets.length} diagrams</div>
+  },
+}))
+
 vi.mock('./ErrorPresentation', () => ({
   ErrorPresentation: function MockErrorPresentation(props: {
     interpretation: string
@@ -27,7 +33,13 @@ const DEFAULT_PROPS = {
   brief: null,
   criteria: [] as ReadonlyArray<AcceptanceCriterion>,
   criteriaResults: null as ReadonlyArray<CriterionResult> | null,
+  conceptExplainerAssets: [] as readonly ConceptExplainerAsset[],
 }
+
+const MOCK_ASSETS: readonly ConceptExplainerAsset[] = [
+  { name: 'kv-ops.svg', path: '/assets/kv-ops.svg', altText: 'KV operations', title: 'KV Ops' },
+  { name: 'flow.svg', path: '/assets/flow.svg', altText: null, title: null },
+]
 
 describe('TerminalPanel', () => {
   beforeEach(() => {
@@ -311,5 +323,95 @@ describe('TerminalPanel', () => {
 
     const list = screen.getByTestId('criteria-list')
     expect(list).toHaveAttribute('aria-live', 'polite')
+  })
+
+  describe('Diagrams tab', () => {
+    it('should show Diagrams tab when concept explainer assets are provided', () => {
+      render(<TerminalPanel {...DEFAULT_PROPS} conceptExplainerAssets={MOCK_ASSETS} />)
+
+      expect(screen.getByRole('tab', { name: /diagrams/i })).toBeInTheDocument()
+    })
+
+    it('should not show Diagrams tab when assets array is empty', () => {
+      render(<TerminalPanel {...DEFAULT_PROPS} conceptExplainerAssets={[]} />)
+
+      expect(screen.queryByRole('tab', { name: /diagrams/i })).not.toBeInTheDocument()
+    })
+
+    it('should render ConceptExplainers when Diagrams tab is active', () => {
+      useWorkspaceUIStore.setState({ activeTerminalTab: 'diagrams' })
+      render(<TerminalPanel {...DEFAULT_PROPS} conceptExplainerAssets={MOCK_ASSETS} />)
+
+      expect(screen.getByTestId('concept-explainers')).toBeInTheDocument()
+      expect(screen.getByText('2 diagrams')).toBeInTheDocument()
+    })
+
+    it('should support keyboard navigation with 4 tabs when diagrams present', () => {
+      useWorkspaceUIStore.setState({ activeTerminalTab: 'brief' })
+      render(<TerminalPanel {...DEFAULT_PROPS} conceptExplainerAssets={MOCK_ASSETS} />)
+
+      const briefTab = screen.getByRole('tab', { name: /brief/i })
+
+      // brief -> diagrams (ArrowRight)
+      fireEvent.keyDown(briefTab, { key: 'ArrowRight' })
+      expect(useWorkspaceUIStore.getState().activeTerminalTab).toBe('diagrams')
+
+      // diagrams -> output (ArrowRight)
+      const diagramsTab = screen.getByRole('tab', { name: /diagrams/i })
+      fireEvent.keyDown(diagramsTab, { key: 'ArrowRight' })
+      expect(useWorkspaceUIStore.getState().activeTerminalTab).toBe('output')
+    })
+
+    it('should support ArrowLeft wrapping with 4 tabs', () => {
+      useWorkspaceUIStore.setState({ activeTerminalTab: 'brief' })
+      render(<TerminalPanel {...DEFAULT_PROPS} conceptExplainerAssets={MOCK_ASSETS} />)
+
+      const briefTab = screen.getByRole('tab', { name: /brief/i })
+
+      // brief (index 0) ArrowLeft wraps to criteria (index 3)
+      fireEvent.keyDown(briefTab, { key: 'ArrowLeft' })
+      expect(useWorkspaceUIStore.getState().activeTerminalTab).toBe('criteria')
+    })
+
+    it('should support Home/End keys with 4 tabs', () => {
+      useWorkspaceUIStore.setState({ activeTerminalTab: 'output' })
+      render(<TerminalPanel {...DEFAULT_PROPS} conceptExplainerAssets={MOCK_ASSETS} />)
+
+      const outputTab = screen.getByRole('tab', { name: /output/i })
+
+      // Home -> brief
+      fireEvent.keyDown(outputTab, { key: 'Home' })
+      expect(useWorkspaceUIStore.getState().activeTerminalTab).toBe('brief')
+
+      // End -> criteria
+      const briefTab = screen.getByRole('tab', { name: /brief/i })
+      fireEvent.keyDown(briefTab, { key: 'End' })
+      expect(useWorkspaceUIStore.getState().activeTerminalTab).toBe('criteria')
+    })
+
+    it('should support Home/End keys with 3 tabs', () => {
+      useWorkspaceUIStore.setState({ activeTerminalTab: 'output' })
+      render(<TerminalPanel {...DEFAULT_PROPS} />)
+
+      const outputTab = screen.getByRole('tab', { name: /output/i })
+
+      // Home -> brief
+      fireEvent.keyDown(outputTab, { key: 'Home' })
+      expect(useWorkspaceUIStore.getState().activeTerminalTab).toBe('brief')
+
+      // End -> criteria
+      const briefTab = screen.getByRole('tab', { name: /brief/i })
+      fireEvent.keyDown(briefTab, { key: 'End' })
+      expect(useWorkspaceUIStore.getState().activeTerminalTab).toBe('criteria')
+    })
+
+    it('should fall back to brief tab when diagrams tab is active but no assets exist', () => {
+      useWorkspaceUIStore.setState({ activeTerminalTab: 'diagrams' })
+      render(<TerminalPanel {...DEFAULT_PROPS} conceptExplainerAssets={[]} brief="# My Milestone" />)
+
+      // Should not show diagrams tab, should show brief content
+      expect(screen.queryByRole('tab', { name: /diagrams/i })).not.toBeInTheDocument()
+      expect(screen.getByText('My Milestone')).toBeInTheDocument()
+    })
   })
 })

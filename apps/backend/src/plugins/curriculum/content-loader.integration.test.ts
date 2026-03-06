@@ -56,9 +56,20 @@ describe('ContentLoader integration', () => {
       expect(bench.targetMetrics.opsPerSec).toBe(100)
     })
 
-    it('should return empty array for assets with only .gitkeep', async () => {
+    it('should return SVG assets with alt text and title from manifest', async () => {
       const assets = await loader.listConceptExplainerAssets('01-kv-store')
-      expect(assets).toEqual([])
+      expect(assets.length).toBeGreaterThan(0)
+
+      const kvAsset = assets.find((a) => a.name === 'kv-store-operations.svg')
+      expect(kvAsset).toBeDefined()
+      expect(kvAsset!.path).toBe('/assets/milestones/01-kv-store/kv-store-operations.svg')
+      expect(kvAsset!.altText).toContain('PUT, GET, and DELETE')
+      expect(kvAsset!.title).toBe('Key-Value Store Operations')
+
+      const flowAsset = assets.find((a) => a.name === 'persistence-flow.svg')
+      expect(flowAsset).toBeDefined()
+      expect(flowAsset!.altText).toContain('persistence flow')
+      expect(flowAsset!.title).toBe('Persistence Flow')
     })
 
     it('should load starter code content from main.go', async () => {

@@ -8,7 +8,7 @@ import {
 import type { PanelSize } from '@mycscompanion/ui/src/components/ui/resizable'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
 import { MessageCircle, RefreshCw } from 'lucide-react'
-import type { AcceptanceCriterion, CriterionResult } from '@mycscompanion/shared'
+import type { AcceptanceCriterion, ConceptExplainerAsset, CriterionResult } from '@mycscompanion/shared'
 import { WorkspaceTopBar } from './WorkspaceTopBar'
 import { CodeEditor } from './CodeEditor'
 import { TerminalPanel } from './TerminalPanel'
@@ -30,6 +30,7 @@ interface WorkspaceLayoutProps {
   readonly criteriaResults: ReadonlyArray<CriterionResult> | null
   readonly allCriteriaMet?: boolean
   readonly onCompleteMilestone?: () => void
+  readonly conceptExplainerAssets: readonly ConceptExplainerAsset[]
 }
 
 function WorkspaceLayout({
@@ -47,6 +48,7 @@ function WorkspaceLayout({
   criteriaResults,
   allCriteriaMet,
   onCompleteMilestone,
+  conceptExplainerAssets,
 }: WorkspaceLayoutProps): React.ReactElement {
   const breakpointMode = useWorkspaceUIStore((s) => s.breakpointMode)
   const setBreakpointMode = useWorkspaceUIStore((s) => s.setBreakpointMode)
@@ -136,7 +138,7 @@ function WorkspaceLayout({
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize="30%" minSize="120px">
-              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} />
+              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} conceptExplainerAssets={conceptExplainerAssets} />
             </ResizablePanel>
           </ResizablePanelGroup>
 
@@ -182,7 +184,7 @@ function WorkspaceLayout({
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize="30%" minSize="120px">
-              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} />
+              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} conceptExplainerAssets={conceptExplainerAssets} />
             </ResizablePanel>
           </ResizablePanelGroup>
         </ResizablePanel>

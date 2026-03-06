@@ -227,7 +227,7 @@ describe('ContentLoader', () => {
   })
 
   describe('listConceptExplainerAssets', () => {
-    it('should return SVG files from assets directory', async () => {
+    it('should return SVG files from assets directory with null altText and title when no manifest', async () => {
       setupFs(
         {
           [`${CONTENT_ROOT}/01-kv-store/brief.md`]: BRIEF_CONTENT,
@@ -245,6 +245,88 @@ describe('ContentLoader', () => {
       expect(assets.map((a) => a.name).sort()).toEqual(['binary-format.svg', 'kv-store-flow.svg'])
       expect(assets[0]?.path).toMatch(/^\/assets\/milestones\/01-kv-store\//)
       expect(assets[0]?.altText).toBeNull()
+      expect(assets[0]?.title).toBeNull()
+    })
+
+    it('should enrich SVG assets with altText and title from manifest.yaml', async () => {
+      const manifestYaml = `- filename: kv-store-flow.svg
+  altText: "Diagram showing KV store data flow"
+  title: "KV Store Flow"
+- filename: binary-format.svg
+  altText: "Binary format diagram"
+`
+      setupFs(
+        {
+          [`${CONTENT_ROOT}/01-kv-store/brief.md`]: BRIEF_CONTENT,
+          [`${CONTENT_ROOT}/01-kv-store/acceptance-criteria.yaml`]: ACCEPTANCE_CRITERIA_YAML,
+          [`${CONTENT_ROOT}/01-kv-store/benchmark-config.yaml`]: BENCHMARK_CONFIG_YAML,
+          [`${CONTENT_ROOT}/01-kv-store/assets/manifest.yaml`]: manifestYaml,
+        },
+        {
+          [`${CONTENT_ROOT}/01-kv-store/assets`]: ['kv-store-flow.svg', 'binary-format.svg'],
+          [`${CONTENT_ROOT}/01-kv-store/starter-code`]: ['.gitkeep'],
+        }
+      )
+
+      const assets = await loader.listConceptExplainerAssets('01-kv-store')
+      expect(assets).toHaveLength(2)
+
+      const kvAsset = assets.find((a) => a.name === 'kv-store-flow.svg')
+      expect(kvAsset?.altText).toBe('Diagram showing KV store data flow')
+      expect(kvAsset?.title).toBe('KV Store Flow')
+
+      const binAsset = assets.find((a) => a.name === 'binary-format.svg')
+      expect(binAsset?.altText).toBe('Binary format diagram')
+      expect(binAsset?.title).toBeNull()
+    })
+
+    it('should return null altText and title for SVGs without manifest entries', async () => {
+      const manifestYaml = `- filename: kv-store-flow.svg
+  altText: "Diagram showing KV store data flow"
+  title: "KV Store Flow"
+`
+      setupFs(
+        {
+          [`${CONTENT_ROOT}/01-kv-store/brief.md`]: BRIEF_CONTENT,
+          [`${CONTENT_ROOT}/01-kv-store/acceptance-criteria.yaml`]: ACCEPTANCE_CRITERIA_YAML,
+          [`${CONTENT_ROOT}/01-kv-store/benchmark-config.yaml`]: BENCHMARK_CONFIG_YAML,
+          [`${CONTENT_ROOT}/01-kv-store/assets/manifest.yaml`]: manifestYaml,
+        },
+        {
+          [`${CONTENT_ROOT}/01-kv-store/assets`]: ['kv-store-flow.svg', 'other-diagram.svg'],
+          [`${CONTENT_ROOT}/01-kv-store/starter-code`]: ['.gitkeep'],
+        }
+      )
+
+      const assets = await loader.listConceptExplainerAssets('01-kv-store')
+      const otherAsset = assets.find((a) => a.name === 'other-diagram.svg')
+      expect(otherAsset?.altText).toBeNull()
+      expect(otherAsset?.title).toBeNull()
+    })
+
+    it('should silently ignore manifest entries for nonexistent SVGs', async () => {
+      const manifestYaml = `- filename: nonexistent.svg
+  altText: "This SVG does not exist"
+- filename: kv-store-flow.svg
+  altText: "Real diagram"
+`
+      setupFs(
+        {
+          [`${CONTENT_ROOT}/01-kv-store/brief.md`]: BRIEF_CONTENT,
+          [`${CONTENT_ROOT}/01-kv-store/acceptance-criteria.yaml`]: ACCEPTANCE_CRITERIA_YAML,
+          [`${CONTENT_ROOT}/01-kv-store/benchmark-config.yaml`]: BENCHMARK_CONFIG_YAML,
+          [`${CONTENT_ROOT}/01-kv-store/assets/manifest.yaml`]: manifestYaml,
+        },
+        {
+          [`${CONTENT_ROOT}/01-kv-store/assets`]: ['kv-store-flow.svg'],
+          [`${CONTENT_ROOT}/01-kv-store/starter-code`]: ['.gitkeep'],
+        }
+      )
+
+      const assets = await loader.listConceptExplainerAssets('01-kv-store')
+      expect(assets).toHaveLength(1)
+      expect(assets[0]?.name).toBe('kv-store-flow.svg')
+      expect(assets[0]?.altText).toBe('Real diagram')
     })
 
     it('should filter out non-SVG files', async () => {
@@ -269,6 +351,42 @@ describe('ContentLoader', () => {
 
       const assets = await loader.listConceptExplainerAssets('nonexistent')
       expect(assets).toEqual([])
+    })
+
+    it('should log error when manifest parsing fails with non-ENOENT error', async () => {
+      const mockLog = { error: vi.fn() }
+      const loaderWithLog = createContentLoader({
+        redis: mockRedis as unknown as Redis,
+        contentRoot: CONTENT_ROOT,
+        log: mockLog,
+      })
+
+      mockReadFile.mockImplementation(async (path: string) => {
+        if (path === `${CONTENT_ROOT}/01-kv-store/assets/manifest.yaml`) {
+          throw new Error('Permission denied')
+        }
+        if (path === `${CONTENT_ROOT}/01-kv-store/brief.md`) return BRIEF_CONTENT
+        if (path === `${CONTENT_ROOT}/01-kv-store/acceptance-criteria.yaml`) return ACCEPTANCE_CRITERIA_YAML
+        if (path === `${CONTENT_ROOT}/01-kv-store/benchmark-config.yaml`) return BENCHMARK_CONFIG_YAML
+        const err = new Error('ENOENT') as NodeJS.ErrnoException
+        err.code = 'ENOENT'
+        throw err
+      })
+      mockReaddir.mockImplementation(async (path: string) => {
+        if (path === `${CONTENT_ROOT}/01-kv-store/assets`) return ['diagram.svg']
+        if (path === `${CONTENT_ROOT}/01-kv-store/starter-code`) return ['.gitkeep']
+        const err = new Error('ENOENT') as NodeJS.ErrnoException
+        err.code = 'ENOENT'
+        throw err
+      })
+
+      const assets = await loaderWithLog.listConceptExplainerAssets('01-kv-store')
+      expect(assets).toHaveLength(1)
+      expect(assets[0]?.altText).toBeNull()
+      expect(mockLog.error).toHaveBeenCalledWith(
+        expect.objectContaining({ slug: '01-kv-store' }),
+        'Failed to parse concept explainer manifest'
+      )
     })
   })
 

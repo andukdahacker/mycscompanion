@@ -140,18 +140,53 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
     }
   }
 
+  interface ManifestEntry {
+    readonly filename: string
+    readonly altText?: string
+    readonly title?: string
+  }
+
+  async function readManifest(slug: string): Promise<readonly ManifestEntry[]> {
+    try {
+      const raw = await readFile(join(milestoneDir(slug), 'assets', 'manifest.yaml'), 'utf-8')
+      const parsed = yaml.load(raw)
+      if (!Array.isArray(parsed)) {
+        return []
+      }
+      return parsed as ManifestEntry[]
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        log?.error({ slug, error: String(err) }, 'Failed to parse concept explainer manifest')
+      }
+      return []
+    }
+  }
+
   async function readConceptExplainerAssets(slug: string): Promise<readonly ConceptExplainerAsset[]> {
     try {
       const assetsDir = join(milestoneDir(slug), 'assets')
       const files = await readdir(assetsDir)
-      return files
-        .filter((f) => f.endsWith('.svg'))
-        .map((name) => ({
+      const svgFiles = files.filter((f) => f.endsWith('.svg'))
+      if (svgFiles.length === 0) {
+        return []
+      }
+
+      const manifest = await readManifest(slug)
+      const manifestMap = new Map(manifest.map((entry) => [entry.filename, entry]))
+
+      return svgFiles.map((name) => {
+        const entry = manifestMap.get(name)
+        return {
           name,
           path: `/assets/milestones/${slug}/${name}`,
-          altText: null,
-        }))
-    } catch {
+          altText: entry?.altText ?? null,
+          title: entry?.title ?? null,
+        }
+      })
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        log?.error({ slug, error: String(err) }, 'Failed to read concept explainer assets')
+      }
       return []
     }
   }

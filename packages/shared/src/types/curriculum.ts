@@ -84,6 +84,7 @@ export interface ConceptExplainerAsset {
   readonly name: string
   readonly path: string
   readonly altText: string | null
+  readonly title: string | null
 }
 
 // --- API Response Types ---

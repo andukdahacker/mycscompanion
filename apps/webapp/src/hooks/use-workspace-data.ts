@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import type { MilestoneContent, AcceptanceCriterion } from '@mycscompanion/shared'
+import type { MilestoneContent, AcceptanceCriterion, ConceptExplainerAsset } from '@mycscompanion/shared'
 import { apiFetch } from '../lib/api-fetch'
 
 interface StuckDetectionConfig {
@@ -15,6 +15,7 @@ interface WorkspaceData {
   readonly brief: string | null
   readonly criteria: ReadonlyArray<AcceptanceCriterion>
   readonly stuckDetection: StuckDetectionConfig
+  readonly conceptExplainerAssets: readonly ConceptExplainerAsset[]
 }
 
 const DEFAULT_GO_TEMPLATE = `package main
@@ -43,6 +44,7 @@ function useWorkspaceData(milestoneId: string | undefined) {
         brief: content.brief,
         criteria: content.acceptanceCriteria,
         stuckDetection: { thresholdMinutes: 10, stage2OffsetSeconds: 60 }, // Hardcoded until Epic 6
+        conceptExplainerAssets: content.conceptExplainerAssets,
       }
     },
     staleTime: 5 * 60 * 1000,

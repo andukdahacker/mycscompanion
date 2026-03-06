@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest'
 import { render, screen, cleanup, act } from '@testing-library/react'
 
-import type { AcceptanceCriterion } from '@mycscompanion/shared'
+import type { AcceptanceCriterion, ConceptExplainerAsset } from '@mycscompanion/shared'
 import { WorkspaceLayout } from './WorkspaceLayout'
 import type { OutputLine } from './TerminalPanel'
 import { useWorkspaceUIStore } from '../../stores/workspace-ui-store'
@@ -24,6 +24,7 @@ vi.mock('./TerminalPanel', () => ({
     isRunning: boolean
     onRetry?: () => void
     criteriaResults: ReadonlyArray<Record<string, unknown>> | null
+    conceptExplainerAssets: ReadonlyArray<Record<string, unknown>>
   }) {
     return (
       <div
@@ -31,6 +32,7 @@ vi.mock('./TerminalPanel', () => ({
         data-output-count={props.outputLines.length}
         data-is-running={props.isRunning}
         data-criteria-results={props.criteriaResults ? JSON.stringify(props.criteriaResults) : ''}
+        data-concept-assets-count={props.conceptExplainerAssets.length}
       >
         {props.onRetry && <button data-testid="terminal-retry" onClick={props.onRetry}>Retry</button>}
       </div>
@@ -73,6 +75,7 @@ describe('WorkspaceLayout', () => {
     brief: null as string | null,
     criteria: [] as ReadonlyArray<AcceptanceCriterion>,
     criteriaResults: null,
+    conceptExplainerAssets: [] as readonly ConceptExplainerAsset[],
   }
 
   beforeEach(() => {
@@ -297,6 +300,25 @@ describe('WorkspaceLayout', () => {
       })
 
       expect(onBenchmark).toHaveBeenCalledOnce()
+    })
+  })
+
+  describe('conceptExplainerAssets pass-through', () => {
+    it('should pass conceptExplainerAssets to TerminalPanel', () => {
+      const assets: readonly ConceptExplainerAsset[] = [
+        { name: 'kv-ops.svg', path: '/assets/kv-ops.svg', altText: 'KV ops', title: 'KV Ops' },
+      ]
+      render(<WorkspaceLayout {...defaultProps} conceptExplainerAssets={assets} />)
+
+      const terminal = screen.getByTestId('terminal-panel')
+      expect(terminal.getAttribute('data-concept-assets-count')).toBe('1')
+    })
+
+    it('should pass empty array when no assets exist', () => {
+      render(<WorkspaceLayout {...defaultProps} conceptExplainerAssets={[]} />)
+
+      const terminal = screen.getByTestId('terminal-panel')
+      expect(terminal.getAttribute('data-concept-assets-count')).toBe('0')
     })
   })
 

@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 400" width="720" height="400">
+  <title>Key-Value Store Operations</title>
+  <desc>Diagram showing how PUT, GET, and DELETE operations interact with the in-memory hash map data structure</desc>
+
+  <!-- Hash Map (center) -->
+  <rect x="260" y="80" width="200" height="240" rx="8" fill="none" stroke="#e2e8f0" stroke-width="2"/>
+  <text x="360" y="60" text-anchor="middle" fill="#f8fafc" font-family="monospace" font-size="16" font-weight="bold">Hash Map</text>
+
+  <!-- Buckets -->
+  <rect x="280" y="100" width="160" height="36" rx="4" fill="none" stroke="#94a3b8" stroke-width="1"/>
+  <text x="290" y="123" fill="#cbd5e1" font-family="monospace" font-size="13">"name"</text>
+  <text x="395" y="123" fill="#94a3b8" font-family="monospace" font-size="13">"Alice"</text>
+
+  <rect x="280" y="150" width="160" height="36" rx="4" fill="none" stroke="#94a3b8" stroke-width="1"/>
+  <text x="290" y="173" fill="#cbd5e1" font-family="monospace" font-size="13">"age"</text>
+  <text x="395" y="173" fill="#94a3b8" font-family="monospace" font-size="13">"30"</text>
+
+  <rect x="280" y="200" width="160" height="36" rx="4" fill="none" stroke="#94a3b8" stroke-width="1"/>
+  <text x="290" y="223" fill="#cbd5e1" font-family="monospace" font-size="13">"city"</text>
+  <text x="395" y="223" fill="#94a3b8" font-family="monospace" font-size="13">"NYC"</text>
+
+  <rect x="280" y="250" width="160" height="36" rx="4" fill="none" stroke="#64748b" stroke-width="1" stroke-dasharray="4"/>
+  <text x="360" y="273" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="13">...</text>
+
+  <!-- PUT arrow (left) -->
+  <line x1="80" y1="118" x2="255" y2="118" stroke="#22d3ee" stroke-width="2" marker-end="url(#arrowCyan)"/>
+  <rect x="20" y="95" width="55" height="28" rx="4" fill="#22d3ee" opacity="0.15"/>
+  <text x="47" y="114" text-anchor="middle" fill="#22d3ee" font-family="monospace" font-size="14" font-weight="bold">PUT</text>
+  <text x="160" y="108" text-anchor="middle" fill="#94a3b8" font-family="monospace" font-size="11">key, value</text>
+
+  <!-- GET arrow (left) -->
+  <line x1="255" y1="168" x2="80" y2="168" stroke="#4ade80" stroke-width="2" marker-end="url(#arrowGreen)"/>
+  <rect x="20" y="155" width="55" height="28" rx="4" fill="#4ade80" opacity="0.15"/>
+  <text x="47" y="174" text-anchor="middle" fill="#4ade80" font-family="monospace" font-size="14" font-weight="bold">GET</text>
+  <text x="160" y="190" text-anchor="middle" fill="#94a3b8" font-family="monospace" font-size="11">returns value</text>
+
+  <!-- DELETE arrow (right) -->
+  <line x1="640" y1="218" x2="465" y2="218" stroke="#f87171" stroke-width="2" marker-end="url(#arrowRed)"/>
+  <rect x="645" y="205" width="55" height="28" rx="4" fill="#f87171" opacity="0.15"/>
+  <text x="672" y="224" text-anchor="middle" fill="#f87171" font-family="monospace" font-size="14" font-weight="bold">DEL</text>
+  <text x="555" y="208" text-anchor="middle" fill="#94a3b8" font-family="monospace" font-size="11">removes key</text>
+
+  <!-- Legend -->
+  <text x="360" y="360" text-anchor="middle" fill="#64748b" font-family="monospace" font-size="12">All operations are O(1) average via hash function</text>
+
+  <!-- Arrow markers -->
+  <defs>
+    <marker id="arrowCyan" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8" fill="none" stroke="#22d3ee" stroke-width="1.5"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8" fill="none" stroke="#4ade80" stroke-width="1.5"/>
+    </marker>
+    <marker id="arrowRed" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8" fill="none" stroke="#f87171" stroke-width="1.5"/>
+    </marker>
+  </defs>
+</svg>

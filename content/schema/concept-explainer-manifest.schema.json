@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["filename", "altText"],
+    "additionalProperties": false,
+    "properties": {
+      "filename": { "type": "string" },
+      "altText": { "type": "string" },
+      "title": { "type": "string" }
+    }
+  }
+}

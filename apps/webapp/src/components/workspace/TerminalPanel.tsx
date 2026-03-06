@@ -1,11 +1,12 @@
 import { useRef } from 'react'
 import { Check, Loader2 } from 'lucide-react'
 import { ScrollArea } from '@mycscompanion/ui/src/components/ui/scroll-area'
-import type { AcceptanceCriterion, CriterionResult } from '@mycscompanion/shared'
+import type { AcceptanceCriterion, ConceptExplainerAsset, CriterionResult } from '@mycscompanion/shared'
 import { useWorkspaceUIStore } from '../../stores/workspace-ui-store'
 import { useAutoScroll } from '../../hooks/use-auto-scroll'
 import { ErrorPresentation } from './ErrorPresentation'
 import { MilestoneBrief } from './MilestoneBrief'
+import { ConceptExplainers } from './ConceptExplainers'
 
 type OutputLine =
   | { readonly kind: 'stdout'; readonly text: string }
@@ -23,116 +24,93 @@ interface TerminalPanelProps {
   readonly criteriaResults: ReadonlyArray<CriterionResult> | null
   readonly allCriteriaMet?: boolean
   readonly onCompleteMilestone?: () => void
+  readonly conceptExplainerAssets: readonly ConceptExplainerAsset[]
 }
 
-const TABS = ['brief', 'output', 'criteria'] as const
+const TAB_LABELS: Record<string, string> = {
+  brief: 'Brief',
+  diagrams: 'Diagrams',
+  output: 'Output',
+  criteria: 'Criteria',
+}
 
-function TerminalPanel({ outputLines, isRunning, onRetry, brief, criteria, criteriaResults, allCriteriaMet, onCompleteMilestone }: TerminalPanelProps): React.ReactElement {
+function TerminalPanel({ outputLines, isRunning, onRetry, brief, criteria, criteriaResults, allCriteriaMet, onCompleteMilestone, conceptExplainerAssets }: TerminalPanelProps): React.ReactElement {
   const activeTab = useWorkspaceUIStore((s) => s.activeTerminalTab)
   const setActiveTab = useWorkspaceUIStore((s) => s.setActiveTerminalTab)
   const scrollRef = useAutoScroll([outputLines])
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 
+  const visibleTabs = conceptExplainerAssets.length > 0
+    ? (['brief', 'diagrams', 'output', 'criteria'] as const)
+    : (['brief', 'output', 'criteria'] as const)
+
+  // If active tab is diagrams but no assets exist, fall back to brief
+  const effectiveTab = activeTab === 'diagrams' && conceptExplainerAssets.length === 0
+    ? 'brief'
+    : activeTab
+
   function handleTabKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    const currentIndex = TABS.indexOf(activeTab)
+    const currentIndex = visibleTabs.indexOf(effectiveTab as typeof visibleTabs[number])
     let nextIndex = currentIndex
 
     switch (e.key) {
       case 'ArrowRight':
-        nextIndex = (currentIndex + 1) % TABS.length
+        nextIndex = (currentIndex + 1) % visibleTabs.length
         break
       case 'ArrowLeft':
-        nextIndex = (currentIndex - 1 + TABS.length) % TABS.length
+        nextIndex = (currentIndex - 1 + visibleTabs.length) % visibleTabs.length
         break
       case 'Home':
         nextIndex = 0
         break
       case 'End':
-        nextIndex = TABS.length - 1
+        nextIndex = visibleTabs.length - 1
         break
       default:
         return
     }
 
     e.preventDefault()
-    const tab = TABS[nextIndex]
+    const tab = visibleTabs[nextIndex]
     if (tab) setActiveTab(tab)
     tabRefs.current[nextIndex]?.focus()
   }
 
-  const briefTabId = 'terminal-tab-brief'
-  const outputTabId = 'terminal-tab-output'
-  const criteriaTabId = 'terminal-tab-criteria'
   const panelId = 'terminal-tabpanel'
-
-  function getTabLabelId(): string {
-    if (activeTab === 'brief') return briefTabId
-    if (activeTab === 'output') return outputTabId
-    return criteriaTabId
-  }
 
   return (
     <div className="flex h-full flex-col">
       {/* Tab bar */}
       <div role="tablist" aria-label="Terminal tabs" className="flex border-b" onKeyDown={handleTabKeyDown}>
-        <button
-          ref={(el) => { tabRefs.current[0] = el }}
-          id={briefTabId}
-          role="tab"
-          aria-selected={activeTab === 'brief'}
-          aria-controls={panelId}
-          tabIndex={activeTab === 'brief' ? 0 : -1}
-          className={`min-h-11 px-4 text-sm font-medium transition-colors ${
-            activeTab === 'brief'
-              ? 'border-b-2 border-primary text-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setActiveTab('brief')}
-        >
-          Brief
-        </button>
-        <button
-          ref={(el) => { tabRefs.current[1] = el }}
-          id={outputTabId}
-          role="tab"
-          aria-selected={activeTab === 'output'}
-          aria-controls={panelId}
-          tabIndex={activeTab === 'output' ? 0 : -1}
-          className={`min-h-11 px-4 text-sm font-medium transition-colors ${
-            activeTab === 'output'
-              ? 'border-b-2 border-primary text-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setActiveTab('output')}
-        >
-          Output
-        </button>
-        <button
-          ref={(el) => { tabRefs.current[2] = el }}
-          id={criteriaTabId}
-          role="tab"
-          aria-selected={activeTab === 'criteria'}
-          aria-controls={panelId}
-          tabIndex={activeTab === 'criteria' ? 0 : -1}
-          className={`min-h-11 px-4 text-sm font-medium transition-colors ${
-            activeTab === 'criteria'
-              ? 'border-b-2 border-primary text-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setActiveTab('criteria')}
-        >
-          Criteria
-        </button>
+        {visibleTabs.map((tab, i) => (
+          <button
+            key={tab}
+            ref={(el) => { tabRefs.current[i] = el }}
+            id={`terminal-tab-${tab}`}
+            role="tab"
+            aria-selected={effectiveTab === tab}
+            aria-controls={panelId}
+            tabIndex={effectiveTab === tab ? 0 : -1}
+            className={`min-h-11 px-4 text-sm font-medium transition-colors ${
+              effectiveTab === tab
+                ? 'border-b-2 border-primary text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setActiveTab(tab)}
+          >
+            {TAB_LABELS[tab]}
+          </button>
+        ))}
       </div>
 
       {/* Tab panel */}
       <div
         id={panelId}
         role="tabpanel"
-        aria-labelledby={getTabLabelId()}
+        aria-labelledby={`terminal-tab-${effectiveTab}`}
         className="flex-1 bg-card font-mono text-sm"
       >
-        {activeTab === 'brief' ? (
+        {effectiveTab === 'brief' ? (
           brief ? (
             <MilestoneBrief brief={brief} />
           ) : (
@@ -140,7 +118,9 @@ function TerminalPanel({ outputLines, isRunning, onRetry, brief, criteria, crite
               <p className="text-muted-foreground">No brief available for this milestone</p>
             </div>
           )
-        ) : activeTab === 'output' ? (
+        ) : effectiveTab === 'diagrams' ? (
+          <ConceptExplainers assets={conceptExplainerAssets} />
+        ) : effectiveTab === 'output' ? (
           <ScrollArea className="h-full" viewportRef={scrollRef}>
             <OutputContent outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} />
           </ScrollArea>

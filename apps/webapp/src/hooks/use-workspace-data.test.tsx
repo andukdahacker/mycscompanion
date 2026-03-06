@@ -137,6 +137,40 @@ describe('useWorkspaceData', () => {
     })
   })
 
+  it('should pass through conceptExplainerAssets from API response', async () => {
+    const assetsContent = {
+      ...MOCK_MILESTONE_CONTENT,
+      conceptExplainerAssets: [
+        { name: 'kv-ops.svg', path: '/assets/milestones/01-kv-store/kv-ops.svg', altText: 'KV operations', title: 'KV Ops' },
+        { name: 'flow.svg', path: '/assets/milestones/01-kv-store/flow.svg', altText: null, title: null },
+      ],
+    }
+    mockApiFetch.mockResolvedValue(assetsContent)
+
+    const { useWorkspaceData } = await import('./use-workspace-data')
+    const { result } = renderHook(() => useWorkspaceData('01-kv-store'), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.data).toBeDefined()
+    })
+
+    expect(result.current.data?.conceptExplainerAssets).toHaveLength(2)
+    expect(result.current.data?.conceptExplainerAssets[0]?.name).toBe('kv-ops.svg')
+    expect(result.current.data?.conceptExplainerAssets[0]?.title).toBe('KV Ops')
+    expect(result.current.data?.conceptExplainerAssets[1]?.altText).toBeNull()
+  })
+
+  it('should return empty conceptExplainerAssets when API returns none', async () => {
+    const { useWorkspaceData } = await import('./use-workspace-data')
+    const { result } = renderHook(() => useWorkspaceData('01-kv-store'), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.data).toBeDefined()
+    })
+
+    expect(result.current.data?.conceptExplainerAssets).toEqual([])
+  })
+
   it('should expose refetch function', async () => {
     const { useWorkspaceData } = await import('./use-workspace-data')
     const { result } = renderHook(() => useWorkspaceData('milestone-1'), { wrapper })
