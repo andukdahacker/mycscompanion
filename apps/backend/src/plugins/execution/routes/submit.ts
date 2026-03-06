@@ -107,6 +107,34 @@ export async function submitRoutes(
       }
     }
 
+    // Create code snapshot as a save point on submission (fire-and-forget)
+    void (async () => {
+      try {
+        const session = await db
+          .selectFrom('sessions')
+          .select(['id'])
+          .where('user_id', '=', request.uid)
+          .where('milestone_id', '=', milestoneId)
+          .where('is_active', '=', true)
+          .executeTakeFirst()
+
+        if (session) {
+          await db
+            .insertInto('code_snapshots')
+            .values({
+              id: generateId(),
+              user_id: request.uid,
+              milestone_id: milestoneId,
+              session_id: session.id,
+              code,
+            })
+            .execute()
+        }
+      } catch (err) {
+        request.log.error(err, 'submit_snapshot_failed')
+      }
+    })()
+
     // Publish initial queued event (fire-and-forget — submission already created successfully)
     eventPublisher.publish(id, { type: 'queued', submissionId: id }).catch((err) => {
       request.log.error(err, 'queued_event_publish_failed')

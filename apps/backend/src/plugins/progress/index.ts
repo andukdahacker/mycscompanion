@@ -4,6 +4,9 @@ import type { DB } from '@mycscompanion/shared'
 import { db as defaultDb } from '../../shared/db.js'
 import type { OverviewContentLoader } from './routes/overview.js'
 import { overviewRoutes } from './routes/overview.js'
+import { autoSaveRoutes } from './routes/auto-save.js'
+import { latestSnapshotRoutes } from './routes/latest-snapshot.js'
+import { sessionRoutes } from './routes/sessions.js'
 
 export interface ProgressPluginOptions {
   readonly db?: Kysely<DB>
@@ -17,4 +20,7 @@ export async function progressPlugin(
   const db = opts.db ?? defaultDb
 
   await fastify.register(overviewRoutes, { db, contentLoader: opts.contentLoader })
+  await fastify.register(autoSaveRoutes, { db })
+  await fastify.register(latestSnapshotRoutes, { db })
+  await fastify.register(sessionRoutes, { db })
 }

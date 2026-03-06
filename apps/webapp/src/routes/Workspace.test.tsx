@@ -104,6 +104,19 @@ vi.mock('../hooks/use-stuck-detection', () => ({
   useStuckDetection: () => ({ isStage1: false, isStage2: false, resetTimer: mockResetTimer, stage1Timestamp: null, stage2Timestamp: null }),
 }))
 
+// Mock useAutoSave
+const mockScheduleAutoSave = vi.fn()
+const mockSaveImmediately = vi.fn()
+vi.mock('../hooks/use-auto-save', () => ({
+  useAutoSave: () => ({ scheduleAutoSave: mockScheduleAutoSave, saveImmediately: mockSaveImmediately }),
+}))
+
+// Mock useSession
+const mockSessionMutate = vi.fn()
+vi.mock('../hooks/use-session', () => ({
+  useSession: () => ({ mutate: mockSessionMutate, isSuccess: false, data: null }),
+}))
+
 // Mock useSSE (needed by useSubmitCode, but since we mock useSubmitCode we just need the module to exist)
 vi.mock('../hooks/use-sse', () => ({
   useSSE: vi.fn(() => ({ status: 'idle', error: null, reconnectCount: 0 })),
@@ -142,6 +155,9 @@ describe('Workspace', () => {
       criteriaResults: null,
     })
     mockResetTimer.mockClear()
+    mockScheduleAutoSave.mockClear()
+    mockSaveImmediately.mockClear()
+    mockSessionMutate.mockClear()
     useWorkspaceUIStore.setState({ activeTerminalTab: 'output' })
   })
 
@@ -409,6 +425,30 @@ describe('Workspace', () => {
 
       const terminal = screen.getByTestId('terminal-panel')
       expect(terminal.getAttribute('data-concept-assets-count')).toBe('0')
+    })
+  })
+
+  describe('auto-save integration', () => {
+    it('should create session on workspace mount', () => {
+      renderWorkspace()
+
+      expect(mockSessionMutate).toHaveBeenCalled()
+    })
+
+    it('should register beforeunload handler', () => {
+      const addSpy = vi.spyOn(window, 'addEventListener')
+      renderWorkspace()
+
+      expect(addSpy).toHaveBeenCalledWith('beforeunload', expect.any(Function))
+    })
+
+    it('should remove beforeunload handler on unmount', () => {
+      const removeSpy = vi.spyOn(window, 'removeEventListener')
+      const { unmount } = renderWorkspace()
+
+      unmount()
+
+      expect(removeSpy).toHaveBeenCalledWith('beforeunload', expect.any(Function))
     })
   })
 })

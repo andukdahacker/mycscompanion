@@ -9,6 +9,8 @@ import { useDelayedLoading } from '../hooks/use-delayed-loading'
 import { useWorkspaceData } from '../hooks/use-workspace-data'
 import { useSubmitCode } from '../hooks/use-submit-code'
 import { useStuckDetection } from '../hooks/use-stuck-detection'
+import { useAutoSave } from '../hooks/use-auto-save'
+import { useSession } from '../hooks/use-session'
 import { apiFetch } from '../lib/api-fetch'
 import { useEditorStore } from '../stores/editor-store'
 import { useWorkspaceUIStore } from '../stores/workspace-ui-store'
@@ -25,17 +27,42 @@ function Workspace(): React.ReactElement | null {
   const stuckDetectionConfig = data?.stuckDetection ?? { thresholdMinutes: 10, stage2OffsetSeconds: 60 }
   const { resetTimer } = useStuckDetection(stuckDetectionConfig)
 
-  // Reset stuck detection on editor content changes (character insert/delete/paste)
+  const { scheduleAutoSave, saveImmediately } = useAutoSave({
+    milestoneId: milestoneId ?? '',
+    enabled: !!milestoneId,
+  })
+
+  // Create or retrieve session on workspace mount (fire-and-forget)
+  const sessionMutation = useSession(milestoneId ?? '')
+  useEffect(() => {
+    if (milestoneId) {
+      sessionMutation.mutate()
+    }
+  }, [milestoneId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset stuck detection and schedule auto-save on editor content changes
+  const currentCodeRef = useRef(useEditorStore.getState().content)
   useEffect(() => {
     const unsubscribe = useEditorStore.subscribe(
       (state, prevState) => {
         if (state.content !== prevState.content) {
           resetTimer()
+          scheduleAutoSave(state.content)
+          currentCodeRef.current = state.content
         }
       },
     )
     return unsubscribe
-  }, [resetTimer])
+  }, [resetTimer, scheduleAutoSave])
+
+  // beforeunload — best-effort last-chance save
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      saveImmediately(currentCodeRef.current)
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [saveImmediately])
 
   const handleRun = useCallback(() => {
     if (!milestoneId) return

@@ -15,10 +15,15 @@ vi.mock('../auth/firebase.js', () => ({
 
 import type { FastifyInstance } from 'fastify'
 import { buildApp } from '../../app.js'
+import { redis } from '../../shared/redis.js'
 
 describe('Admin Plugin', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  afterAll(async () => {
+    redis.disconnect()
   })
 
   describe('with MCC_ADMIN_PASSWORD set', () => {

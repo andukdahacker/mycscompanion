@@ -63,6 +63,8 @@ async function seedUser() {
 }
 
 afterEach(async () => {
+  await db.deleteFrom('code_snapshots').where('user_id', '=', TEST_UID).execute()
+  await db.deleteFrom('sessions').where('user_id', '=', TEST_UID).execute()
   await db.deleteFrom('submissions').where('user_id', '=', TEST_UID).execute()
   await db.deleteFrom('users').where('id', '=', TEST_UID).execute()
   vi.restoreAllMocks()
@@ -268,6 +270,69 @@ describe('POST /api/execution/submit', () => {
     })
 
     expect(response.statusCode).toBe(401)
+
+    await app.close()
+  })
+
+  it('should create code snapshot when active session exists on submit', async () => {
+    await seedUser()
+
+    // Create a track and milestone for FK constraints
+    const trackId = 'test-track-submit'
+    const milestoneId = 'test-milestone-submit'
+    await db
+      .insertInto('tracks')
+      .values({ id: trackId, name: 'Submit Track', slug: 'submit-track' })
+      .onConflict((oc) => oc.column('id').doNothing())
+      .execute()
+    await db
+      .insertInto('milestones')
+      .values({ id: milestoneId, track_id: trackId, title: 'Submit Milestone', slug: 'submit-milestone', position: 1 })
+      .onConflict((oc) => oc.column('id').doNothing())
+      .execute()
+
+    // Create an active session
+    const sessionId = 'test-session-submit'
+    await db
+      .insertInto('sessions')
+      .values({
+        id: sessionId,
+        user_id: TEST_UID,
+        milestone_id: milestoneId,
+        is_active: true,
+      })
+      .execute()
+
+    const app = await buildApp()
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/execution/submit',
+      headers: { authorization: 'Bearer valid-token' },
+      payload: { milestoneId, code: 'package main\nfunc main() {}' },
+    })
+
+    expect(response.statusCode).toBe(202)
+
+    // Wait briefly for fire-and-forget snapshot creation
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    const snapshots = await db
+      .selectFrom('code_snapshots')
+      .selectAll()
+      .where('user_id', '=', TEST_UID)
+      .where('milestone_id', '=', milestoneId)
+      .execute()
+
+    expect(snapshots).toHaveLength(1)
+    expect(snapshots[0]?.session_id).toBe(sessionId)
+    expect(snapshots[0]?.code).toBe('package main\nfunc main() {}')
+
+    // Cleanup
+    await db.deleteFrom('code_snapshots').where('session_id', '=', sessionId).execute()
+    await db.deleteFrom('sessions').where('id', '=', sessionId).execute()
+    await db.deleteFrom('milestones').where('id', '=', milestoneId).execute()
+    await db.deleteFrom('tracks').where('id', '=', trackId).execute()
 
     await app.close()
   })

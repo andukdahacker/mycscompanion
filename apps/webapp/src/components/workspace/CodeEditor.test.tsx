@@ -108,6 +108,7 @@ describe('CodeEditor', () => {
       return {
         focus: vi.fn(),
         addCommand: vi.fn(),
+        getModel: vi.fn().mockReturnValue({ getValue: vi.fn().mockReturnValue('package main') }),
       }
     }
 
