@@ -30,11 +30,7 @@ function Completion(): React.ReactElement {
   const isLastMilestone = data.nextMilestone === null
 
   function handleContinue(): void {
-    if (isLastMilestone) {
-      navigate('/overview')
-    } else if (data?.nextMilestone) {
-      navigate(`/workspace/${data.nextMilestone.id}`, { replace: true })
-    }
+    navigate('/overview', { replace: true })
   }
 
   return (

@@ -22,6 +22,10 @@ export interface ContentLoaderOptions {
   readonly log?: ContentLoaderLogger
 }
 
+export interface MilestoneMetadata {
+  readonly csConceptLabel: string | null
+}
+
 export interface ContentLoader {
   loadMilestoneBrief(slug: string): Promise<string | null>
   loadAcceptanceCriteria(slug: string): Promise<readonly AcceptanceCriterion[]>
@@ -29,6 +33,7 @@ export interface ContentLoader {
   listConceptExplainerAssets(slug: string): Promise<readonly ConceptExplainerAsset[]>
   getStarterCodePath(slug: string): Promise<string | null>
   loadStarterCode(slug: string): Promise<string | null>
+  loadMetadata(slug: string): Promise<MilestoneMetadata>
   invalidateCache(slug: string): Promise<void>
   invalidateAllCaches(): Promise<void>
 }
@@ -52,7 +57,10 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
     conceptExplainerAssets: readonly ConceptExplainerAsset[]
     starterCodePath: string | null
     starterCode: string | null
+    metadata: MilestoneMetadata
   }
+
+  const emptyMetadata: MilestoneMetadata = { csConceptLabel: null }
 
   const emptyCachedContent: CachedMilestoneContent = {
     brief: null,
@@ -61,6 +69,7 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
     conceptExplainerAssets: [],
     starterCodePath: null,
     starterCode: null,
+    metadata: emptyMetadata,
   }
 
   async function loadAndCache(slug: string): Promise<CachedMilestoneContent> {
@@ -73,7 +82,7 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
       return JSON.parse(cached) as CachedMilestoneContent
     }
 
-    const [brief, acceptanceCriteria, benchmarkConfig, conceptExplainerAssets, starterCodePath, starterCode] =
+    const [brief, acceptanceCriteria, benchmarkConfig, conceptExplainerAssets, starterCodePath, starterCode, metadata] =
       await Promise.all([
         readBrief(slug),
         readAcceptanceCriteria(slug),
@@ -81,6 +90,7 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
         readConceptExplainerAssets(slug),
         readStarterCodePath(slug),
         readStarterCode(slug),
+        readMetadata(slug),
       ])
 
     const content: CachedMilestoneContent = {
@@ -90,6 +100,7 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
       conceptExplainerAssets,
       starterCodePath,
       starterCode,
+      metadata,
     }
 
     await redis.set(cacheKey(slug), JSON.stringify(content), 'EX', 3600)
@@ -214,6 +225,21 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
     }
   }
 
+  async function readMetadata(slug: string): Promise<MilestoneMetadata> {
+    try {
+      const raw = await readFile(join(milestoneDir(slug), 'metadata.yaml'), 'utf-8')
+      const parsed = yaml.load(raw) as { csConceptLabel?: string } | null
+      return {
+        csConceptLabel: parsed?.csConceptLabel ?? null,
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        log?.error({ slug, error: String(err) }, 'Failed to read milestone metadata')
+      }
+      return emptyMetadata
+    }
+  }
+
   return {
     async loadMilestoneBrief(slug: string): Promise<string | null> {
       const content = await loadAndCache(slug)
@@ -243,6 +269,11 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
     async loadStarterCode(slug: string): Promise<string | null> {
       const content = await loadAndCache(slug)
       return content.starterCode
+    },
+
+    async loadMetadata(slug: string): Promise<MilestoneMetadata> {
+      const content = await loadAndCache(slug)
+      return content.metadata
     },
 
     async invalidateCache(slug: string): Promise<void> {

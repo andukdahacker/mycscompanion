@@ -94,11 +94,15 @@ export async function streamRoutes(
       }
 
       // Set SSE headers
+      // CORS headers must be set manually since raw.writeHead bypasses Fastify's plugin pipeline
+      const origin = request.headers.origin ?? '*'
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
         'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Credentials': 'true',
       })
 
       const logKey = `execution:${submissionId}:log`

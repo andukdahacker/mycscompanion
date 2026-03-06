@@ -100,6 +100,7 @@ export interface MilestoneContent {
   readonly benchmarkConfig: BenchmarkConfig | null
   readonly conceptExplainerAssets: readonly ConceptExplainerAsset[]
   readonly starterCode: string | null
+  readonly csConceptLabel: string | null
 }
 
 export interface MilestoneSummary {

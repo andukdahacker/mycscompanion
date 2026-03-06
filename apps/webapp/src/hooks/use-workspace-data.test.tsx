@@ -25,6 +25,7 @@ const MOCK_MILESTONE_CONTENT: MilestoneContent = {
   benchmarkConfig: null,
   conceptExplainerAssets: [],
   starterCode: 'package main\n\nfunc main() {}\n',
+  csConceptLabel: null,
 }
 
 describe('useWorkspaceData', () => {

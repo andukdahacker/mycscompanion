@@ -9,16 +9,13 @@ import { Onboarding } from './routes/Onboarding'
 import { NotReady } from './routes/NotReady'
 import { WorkspaceSkeleton } from './components/workspace/WorkspaceSkeleton'
 import { CompletionSkeleton } from './components/completion/CompletionSkeleton'
+import { OverviewSkeleton } from './components/overview/OverviewSkeleton'
 
 const Workspace = React.lazy(() => import('./routes/Workspace'))
 const Completion = React.lazy(() => import('./routes/Completion'))
+const Overview = React.lazy(() => import('./routes/Overview'))
 
 const queryClient = new QueryClient()
-
-// Placeholder components — replaced by real implementations in later stories
-function OverviewPlaceholder(): React.ReactElement {
-  return <div className="flex h-screen items-center justify-center bg-neutral-950 text-neutral-400">Overview (Story 4+)</div>
-}
 
 function App(): React.ReactElement {
   return (
@@ -32,7 +29,14 @@ function App(): React.ReactElement {
         {/* Protected routes */}
         <Route element={<ProtectedRoute />}>
           <Route path="/onboarding" element={<Onboarding />} />
-          <Route path="/overview" element={<OverviewPlaceholder />} />
+          <Route
+            path="/overview"
+            element={
+              <Suspense fallback={<OverviewSkeleton />}>
+                <Overview />
+              </Suspense>
+            }
+          />
           <Route
             path="/workspace/:milestoneId"
             element={

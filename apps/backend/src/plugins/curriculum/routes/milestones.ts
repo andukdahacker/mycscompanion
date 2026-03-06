@@ -26,13 +26,14 @@ export async function milestoneRoutes(fastify: FastifyInstance, opts: MilestoneR
       })
     }
 
-    const [brief, acceptanceCriteria, benchmarkConfig, conceptExplainerAssets, starterCode] =
+    const [brief, acceptanceCriteria, benchmarkConfig, conceptExplainerAssets, starterCode, metadata] =
       await Promise.all([
         contentLoader.loadMilestoneBrief(milestone.slug),
         contentLoader.loadAcceptanceCriteria(milestone.slug),
         contentLoader.loadBenchmarkConfig(milestone.slug),
         contentLoader.listConceptExplainerAssets(milestone.slug),
         contentLoader.loadStarterCode(milestone.slug),
+        contentLoader.loadMetadata(milestone.slug),
       ])
 
     return {
@@ -46,6 +47,7 @@ export async function milestoneRoutes(fastify: FastifyInstance, opts: MilestoneR
       benchmarkConfig,
       conceptExplainerAssets,
       starterCode,
+      csConceptLabel: metadata.csConceptLabel,
     }
   })
 }

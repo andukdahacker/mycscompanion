@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Milestone Metadata",
+  "description": "Optional metadata for a milestone directory (metadata.yaml)",
+  "type": "object",
+  "properties": {
+    "csConceptLabel": {
+      "type": "string",
+      "description": "Short CS concept label for display (e.g., 'Systems Programming & I/O')"
+    }
+  },
+  "additionalProperties": false
+}

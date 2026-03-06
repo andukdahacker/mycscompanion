@@ -87,9 +87,9 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
   )
 
-  const completionContentLoader = createContentLoader({ redis, log: fastify.log })
-  await fastify.register(completionPlugin, { prefix: '/api/completion', contentLoader: completionContentLoader })
-  await fastify.register(progressPlugin, { prefix: '/api/progress' })
+  const contentLoader = createContentLoader({ redis, log: fastify.log })
+  await fastify.register(completionPlugin, { prefix: '/api/completion', contentLoader })
+  await fastify.register(progressPlugin, { prefix: '/api/progress', contentLoader })
   await fastify.register(accountPlugin, { prefix: '/api/account' })
 
   // Position 4: Admin tools (Bull Board) — after domain plugins, uses own auth (basic auth)

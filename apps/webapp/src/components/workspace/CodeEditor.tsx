@@ -24,6 +24,12 @@ function CodeEditor({ initialContent, onRun }: CodeEditorProps): React.ReactElem
   }, [])
 
   const handleMount: OnMount = useCallback((editor, monaco) => {
+    // Sync initial content into the store so submit works without edits
+    const model = editor.getModel()
+    if (model) {
+      setContent(model.getValue())
+    }
+
     // AC #3: Initial focus on workspace load
     editor.focus()
 
@@ -45,7 +51,7 @@ function CodeEditor({ initialContent, onRun }: CodeEditorProps): React.ReactElem
 
     // AC #8: Announce editor ready
     announceToScreenReader('Code editor ready')
-  }, [])
+  }, [setContent])
 
   const handleChange = useCallback((value: string | undefined) => {
     if (value !== undefined) {

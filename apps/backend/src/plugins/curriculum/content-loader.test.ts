@@ -533,6 +533,7 @@ describe('ContentLoader', () => {
         conceptExplainerAssets: [],
         starterCodePath: null,
         starterCode: null,
+        metadata: { csConceptLabel: null },
       })
 
       mockRedis.get.mockResolvedValueOnce(cachedData)
@@ -590,6 +591,86 @@ describe('ContentLoader', () => {
       await loader.invalidateAllCaches()
       expect(mockRedis.keys).toHaveBeenCalledWith('curriculum:milestone:*')
       expect(mockRedis.del).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('loadMetadata', () => {
+    it('should parse csConceptLabel from metadata.yaml', async () => {
+      const metadataYaml = 'csConceptLabel: "Systems Programming & I/O"\n'
+      setupFs(
+        {
+          [`${CONTENT_ROOT}/01-kv-store/metadata.yaml`]: metadataYaml,
+          [`${CONTENT_ROOT}/01-kv-store/brief.md`]: BRIEF_CONTENT,
+          [`${CONTENT_ROOT}/01-kv-store/acceptance-criteria.yaml`]: ACCEPTANCE_CRITERIA_YAML,
+          [`${CONTENT_ROOT}/01-kv-store/benchmark-config.yaml`]: BENCHMARK_CONFIG_YAML,
+        },
+        {
+          [`${CONTENT_ROOT}/01-kv-store/assets`]: ['.gitkeep'],
+          [`${CONTENT_ROOT}/01-kv-store/starter-code`]: ['.gitkeep'],
+        }
+      )
+
+      const metadata = await loader.loadMetadata('01-kv-store')
+      expect(metadata.csConceptLabel).toBe('Systems Programming & I/O')
+    })
+
+    it('should return null csConceptLabel when metadata.yaml does not exist', async () => {
+      setupFs({})
+
+      const metadata = await loader.loadMetadata('nonexistent')
+      expect(metadata.csConceptLabel).toBeNull()
+    })
+
+    it('should return null csConceptLabel when field is missing from metadata.yaml', async () => {
+      const metadataYaml = 'someOtherField: value\n'
+      setupFs(
+        {
+          [`${CONTENT_ROOT}/01-kv-store/metadata.yaml`]: metadataYaml,
+          [`${CONTENT_ROOT}/01-kv-store/brief.md`]: BRIEF_CONTENT,
+          [`${CONTENT_ROOT}/01-kv-store/acceptance-criteria.yaml`]: ACCEPTANCE_CRITERIA_YAML,
+          [`${CONTENT_ROOT}/01-kv-store/benchmark-config.yaml`]: BENCHMARK_CONFIG_YAML,
+        },
+        {
+          [`${CONTENT_ROOT}/01-kv-store/assets`]: ['.gitkeep'],
+          [`${CONTENT_ROOT}/01-kv-store/starter-code`]: ['.gitkeep'],
+        }
+      )
+
+      const metadata = await loader.loadMetadata('01-kv-store')
+      expect(metadata.csConceptLabel).toBeNull()
+    })
+
+    it('should log error for non-ENOENT failures', async () => {
+      const mockLog = { error: vi.fn() }
+      const loaderWithLog = createContentLoader({
+        redis: mockRedis as unknown as Redis,
+        contentRoot: CONTENT_ROOT,
+        log: mockLog,
+      })
+
+      mockReadFile.mockImplementation(async (path: string) => {
+        if (path.endsWith('metadata.yaml')) {
+          throw new Error('Permission denied')
+        }
+        if (path.endsWith('brief.md')) return BRIEF_CONTENT
+        if (path.endsWith('acceptance-criteria.yaml')) return ACCEPTANCE_CRITERIA_YAML
+        if (path.endsWith('benchmark-config.yaml')) return BENCHMARK_CONFIG_YAML
+        const err = new Error('ENOENT') as NodeJS.ErrnoException
+        err.code = 'ENOENT'
+        throw err
+      })
+      mockReaddir.mockImplementation(async () => {
+        const err = new Error('ENOENT') as NodeJS.ErrnoException
+        err.code = 'ENOENT'
+        throw err
+      })
+
+      const metadata = await loaderWithLog.loadMetadata('01-kv-store')
+      expect(metadata.csConceptLabel).toBeNull()
+      expect(mockLog.error).toHaveBeenCalledWith(
+        expect.objectContaining({ slug: '01-kv-store' }),
+        'Failed to read milestone metadata'
+      )
     })
   })
 

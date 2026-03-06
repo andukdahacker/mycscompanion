@@ -117,7 +117,7 @@ describe('Completion', () => {
     const button = await screen.findByRole('button', { name: /return to overview/i })
     await userEvent.click(button)
 
-    expect(mockNavigate).toHaveBeenCalledWith('/overview')
+    expect(mockNavigate).toHaveBeenCalledWith('/overview', { replace: true })
   })
 
   it('should show trajectory placeholder with placeholder text', async () => {
@@ -163,12 +163,12 @@ describe('Completion', () => {
     expect(announcement.getAttribute('aria-live')).toBe('assertive')
   })
 
-  it('should navigate to next workspace when Continue button is clicked', async () => {
+  it('should navigate to overview when Continue button is clicked', async () => {
     renderCompletion()
 
     const button = await screen.findByRole('button', { name: /continue to next milestone/i })
     await userEvent.click(button)
 
-    expect(mockNavigate).toHaveBeenCalledWith('/workspace/ms-2', { replace: true })
+    expect(mockNavigate).toHaveBeenCalledWith('/overview', { replace: true })
   })
 })

@@ -57,3 +57,31 @@ export interface CompleteMilestoneResponse {
   readonly nextMilestoneId: string | null
 }
 
+// --- Contextual Overview ---
+
+export type OverviewVariant = 'first-time' | 'milestone-start'
+
+export interface OverviewMilestoneInfo {
+  readonly id: string
+  readonly slug: string
+  readonly title: string
+  readonly position: number
+  readonly briefExcerpt: string
+  readonly csConceptLabel: string | null
+}
+
+export interface OverviewCriteriaProgress {
+  readonly met: number
+  readonly total: number
+  readonly nextCriterionName: string | null
+}
+
+export interface OverviewData {
+  readonly variant: OverviewVariant
+  readonly milestone: OverviewMilestoneInfo
+  readonly criteriaProgress: OverviewCriteriaProgress | null  // null for first-time
+  readonly sessionSummary: string | null    // Placeholder — populated by Epic 5
+  readonly lastBenchmark: null              // Placeholder — populated by Epic 7
+  readonly benchmarkTrend: null             // Placeholder — populated by Epic 7
+}
+
