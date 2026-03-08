@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router'
+import { useNavigate, Link } from 'react-router'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
 import type { OverviewMilestoneInfo } from '@mycscompanion/shared'
 
@@ -36,10 +36,13 @@ function FirstTimeOverview({ milestone }: FirstTimeOverviewProps): React.ReactEl
           </p>
         </section>
 
-        <div className="flex justify-center">
+        <div className="flex flex-col items-center gap-3">
           <Button size="lg" onClick={handleStart}>
             Start Building
           </Button>
+          <Link to="/progress" className="text-sm text-muted-foreground hover:underline">
+            View all milestones
+          </Link>
         </div>
       </div>
     </main>

@@ -10,10 +10,12 @@ import { NotReady } from './routes/NotReady'
 import { WorkspaceSkeleton } from './components/workspace/WorkspaceSkeleton'
 import { CompletionSkeleton } from './components/completion/CompletionSkeleton'
 import { OverviewSkeleton } from './components/overview/OverviewSkeleton'
+import { ProgressSkeleton } from './components/progress/ProgressSkeleton'
 
 const Workspace = React.lazy(() => import('./routes/Workspace'))
 const Completion = React.lazy(() => import('./routes/Completion'))
 const Overview = React.lazy(() => import('./routes/Overview'))
+const Progress = React.lazy(() => import('./routes/Progress'))
 
 const queryClient = new QueryClient()
 
@@ -34,6 +36,14 @@ function App(): React.ReactElement {
             element={
               <Suspense fallback={<OverviewSkeleton />}>
                 <Overview />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/progress"
+            element={
+              <Suspense fallback={<ProgressSkeleton />}>
+                <Progress />
               </Suspense>
             }
           />

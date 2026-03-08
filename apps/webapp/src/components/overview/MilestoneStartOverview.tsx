@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router'
+import { useNavigate, Link } from 'react-router'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
 import type { OverviewData } from '@mycscompanion/shared'
 
@@ -67,10 +67,13 @@ function MilestoneStartOverview({ data }: MilestoneStartOverviewProps): React.Re
           <p className="text-sm text-muted-foreground">{data.sessionSummary}</p>
         ) : null}
 
-        <div className="flex justify-center">
+        <div className="flex flex-col items-center gap-3">
           <Button size="lg" onClick={handleContinue}>
             Continue Building
           </Button>
+          <Link to="/progress" className="text-sm text-muted-foreground hover:underline">
+            View all milestones
+          </Link>
         </div>
       </div>
     </main>

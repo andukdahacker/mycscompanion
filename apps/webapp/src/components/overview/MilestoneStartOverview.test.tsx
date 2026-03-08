@@ -246,4 +246,12 @@ describe('MilestoneStartOverview', () => {
     expect(screen.getByLabelText('Benchmark')).toBeInTheDocument()
     expect(screen.getByLabelText('Next step')).toBeInTheDocument()
   })
+
+  it('should render "View all milestones" link to /progress', () => {
+    renderComponent()
+
+    const link = screen.getByText('View all milestones')
+    expect(link).toBeInTheDocument()
+    expect(link.closest('a')?.getAttribute('href')).toBe('/progress')
+  })
 })

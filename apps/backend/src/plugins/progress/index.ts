@@ -9,6 +9,7 @@ import { latestSnapshotRoutes } from './routes/latest-snapshot.js'
 import { sessionRoutes } from './routes/sessions.js'
 import { resumeRoutes } from './routes/resume.js'
 import { sessionEndRoutes } from './routes/session-end.js'
+import { trackProgressRoutes } from './routes/track-progress.js'
 
 export interface ProgressPluginOptions {
   readonly db?: Kysely<DB>
@@ -27,4 +28,5 @@ export async function progressPlugin(
   await fastify.register(sessionRoutes, { db })
   await fastify.register(resumeRoutes, { db })
   await fastify.register(sessionEndRoutes, { db })
+  await fastify.register(trackProgressRoutes, { db })
 }

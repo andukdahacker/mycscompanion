@@ -97,3 +97,28 @@ export interface OverviewData {
   readonly benchmarkTrend: null             // Placeholder — populated by Epic 7
 }
 
+// --- Track Progress ---
+
+export type MilestoneStatus = 'completed' | 'in-progress' | 'upcoming'
+
+export interface MilestoneProgressInfo {
+  readonly id: string
+  readonly slug: string
+  readonly title: string
+  readonly position: number
+  readonly description: string
+  readonly status: MilestoneStatus
+  readonly criteriaMet: number | null      // null for upcoming
+  readonly criteriaTotal: number | null    // null for upcoming
+  readonly completedAt: string | null      // ISO 8601, null if not completed
+  readonly lastBenchmark: null             // Placeholder — Epic 7
+}
+
+export interface TrackProgressData {
+  readonly trackName: string
+  readonly trackSlug: string
+  readonly milestones: readonly MilestoneProgressInfo[]
+  readonly completedCount: number
+  readonly totalCount: number
+}
+

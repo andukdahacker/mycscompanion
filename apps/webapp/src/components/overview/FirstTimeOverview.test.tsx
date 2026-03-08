@@ -48,28 +48,28 @@ describe('FirstTimeOverview', () => {
   it('should render introduction text', () => {
     renderComponent()
 
-    expect(screen.getByText(/building a database from scratch/)).toBeDefined()
-    expect(screen.getByText(/understand how PostgreSQL, Redis, and SQLite work/)).toBeDefined()
+    expect(screen.getByText(/building a database from scratch/)).toBeInTheDocument()
+    expect(screen.getByText(/understand how PostgreSQL, Redis, and SQLite work/)).toBeInTheDocument()
   })
 
   it('should render milestone title and brief excerpt', () => {
     renderComponent()
 
-    expect(screen.getByText('Simple Key-Value Store')).toBeDefined()
-    expect(screen.getByText('Build a simple key-value store from scratch.')).toBeDefined()
+    expect(screen.getByText('Simple Key-Value Store')).toBeInTheDocument()
+    expect(screen.getByText('Build a simple key-value store from scratch.')).toBeInTheDocument()
   })
 
   it('should render hook text', () => {
     renderComponent()
 
-    expect(screen.getByText(/Start with a key-value store/)).toBeDefined()
+    expect(screen.getByText(/Start with a key-value store/)).toBeInTheDocument()
   })
 
   it('should render "Start Building" button that navigates to workspace', async () => {
     renderComponent()
 
     const button = screen.getByRole('button', { name: /start building/i })
-    expect(button).toBeDefined()
+    expect(button).toBeInTheDocument()
 
     await userEvent.click(button)
     expect(mockNavigate).toHaveBeenCalledWith('/workspace/ms-1')
@@ -115,5 +115,12 @@ describe('FirstTimeOverview', () => {
 
     const main = document.querySelector('main')
     expect(main).not.toBeNull()
+  })
+
+  it('should render "View all milestones" link to /progress', () => {
+    renderComponent()
+
+    const link = screen.getByText('View all milestones')
+    expect(link.closest('a')?.getAttribute('href')).toBe('/progress')
   })
 })

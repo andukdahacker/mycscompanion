@@ -104,7 +104,7 @@ development_status:
   5-2-session-resume-and-continue-building: done
   5-3-session-summary-generation: done
   5-4-session-summary-display-for-returning-users: done
-  5-5-overall-progress-view: backlog
+  5-5-overall-progress-view: done
   epic-5-retrospective: optional
 
   # Epic 6: AI Socratic Tutor
