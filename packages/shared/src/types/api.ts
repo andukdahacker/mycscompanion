@@ -57,6 +57,18 @@ export interface CompleteMilestoneResponse {
   readonly nextMilestoneId: string | null
 }
 
+// --- Session Resume ---
+
+export interface ResumeData {
+  readonly latestSnapshot: {
+    readonly id: string
+    readonly code: string
+    readonly createdAt: string
+  } | null
+  readonly lastSubmissionId: string | null
+  readonly lastSubmissionCriteria: ReadonlyArray<CriterionResult> | null
+}
+
 // --- Contextual Overview ---
 
 export type OverviewVariant = 'first-time' | 'milestone-start'

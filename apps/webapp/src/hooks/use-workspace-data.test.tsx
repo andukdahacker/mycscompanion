@@ -4,7 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { createTestQueryClient } from '@mycscompanion/config/test-utils/query-client'
 import type { QueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import type { MilestoneContent } from '@mycscompanion/shared'
+import type { MilestoneContent, ResumeData } from '@mycscompanion/shared'
 
 const mockApiFetch = vi.fn()
 
@@ -28,6 +28,37 @@ const MOCK_MILESTONE_CONTENT: MilestoneContent = {
   csConceptLabel: null,
 }
 
+const MOCK_RESUME_EMPTY: ResumeData = {
+  latestSnapshot: null,
+  lastSubmissionId: null,
+  lastSubmissionCriteria: null,
+}
+
+const MOCK_RESUME_WITH_SNAPSHOT: ResumeData = {
+  latestSnapshot: { id: 'snap-1', code: 'package main\n\n// restored code', createdAt: '2026-03-01T00:00:00Z' },
+  lastSubmissionId: null,
+  lastSubmissionCriteria: null,
+}
+
+const MOCK_RESUME_WITH_CRITERIA: ResumeData = {
+  latestSnapshot: null,
+  lastSubmissionId: 'sub-1',
+  lastSubmissionCriteria: [
+    { name: 'put-and-get', order: 1, status: 'met', expected: 'PASS', actual: 'PASS' },
+    { name: 'delete-key', order: 2, status: 'not-met', expected: 'PASS', actual: 'FAIL' },
+  ],
+}
+
+function setupMock(curriculum: Partial<MilestoneContent> = {}, resume: Partial<ResumeData> = {}) {
+  const curriculumData = { ...MOCK_MILESTONE_CONTENT, ...curriculum }
+  const resumeData = { ...MOCK_RESUME_EMPTY, ...resume }
+  mockApiFetch.mockImplementation((url: string) => {
+    if (url.includes('/api/curriculum/')) return Promise.resolve(curriculumData)
+    if (url.includes('/api/progress/resume/')) return Promise.resolve(resumeData)
+    return Promise.reject(new Error(`Unexpected URL: ${url}`))
+  })
+}
+
 describe('useWorkspaceData', () => {
   let queryClient: QueryClient
 
@@ -37,19 +68,31 @@ describe('useWorkspaceData', () => {
 
   beforeEach(() => {
     queryClient = createTestQueryClient()
-    mockApiFetch.mockResolvedValue(MOCK_MILESTONE_CONTENT)
+    setupMock()
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
-  it('should call apiFetch with correct curriculum endpoint', async () => {
+  it('should call apiFetch with correct curriculum and resume endpoints', async () => {
     const { useWorkspaceData } = await import('./use-workspace-data')
     renderHook(() => useWorkspaceData('01-kv-store'), { wrapper })
 
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith('/api/curriculum/milestones/01-kv-store')
+      expect(mockApiFetch).toHaveBeenCalledWith('/api/progress/resume/01-kv-store')
+    })
+  })
+
+  it('should fetch both curriculum and resume endpoints', async () => {
+    const { useWorkspaceData } = await import('./use-workspace-data')
+    renderHook(() => useWorkspaceData('01-kv-store'), { wrapper })
+
+    await waitFor(() => {
+      const calls = mockApiFetch.mock.calls.map((c: unknown[]) => c[0])
+      expect(calls).toContainEqual('/api/curriculum/milestones/01-kv-store')
+      expect(calls).toContainEqual('/api/progress/resume/01-kv-store')
     })
   })
 
@@ -73,8 +116,34 @@ describe('useWorkspaceData', () => {
     )
   })
 
-  it('should fall back to default Go template when starterCode is null', async () => {
-    mockApiFetch.mockResolvedValue({ ...MOCK_MILESTONE_CONTENT, starterCode: null })
+  it('should use snapshot code as initialContent when snapshot exists', async () => {
+    setupMock({}, MOCK_RESUME_WITH_SNAPSHOT)
+
+    const { useWorkspaceData } = await import('./use-workspace-data')
+    const { result } = renderHook(() => useWorkspaceData('01-kv-store'), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.data).toBeDefined()
+    })
+
+    expect(result.current.data?.initialContent).toBe('package main\n\n// restored code')
+  })
+
+  it('should use starterCode when no snapshot exists', async () => {
+    setupMock()
+
+    const { useWorkspaceData } = await import('./use-workspace-data')
+    const { result } = renderHook(() => useWorkspaceData('01-kv-store'), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.data).toBeDefined()
+    })
+
+    expect(result.current.data?.initialContent).toBe('package main\n\nfunc main() {}\n')
+  })
+
+  it('should fall back to default Go template when no snapshot and no starterCode', async () => {
+    setupMock({ starterCode: null })
 
     const { useWorkspaceData } = await import('./use-workspace-data')
     const { result } = renderHook(() => useWorkspaceData('01-kv-store'), { wrapper })
@@ -85,6 +154,34 @@ describe('useWorkspaceData', () => {
 
     expect(result.current.data?.initialContent).toContain('package main')
     expect(result.current.data?.initialContent).toContain('fmt.Println')
+  })
+
+  it('should populate restoredCriteria and restoredSubmissionId from resume response', async () => {
+    setupMock({}, MOCK_RESUME_WITH_CRITERIA)
+
+    const { useWorkspaceData } = await import('./use-workspace-data')
+    const { result } = renderHook(() => useWorkspaceData('01-kv-store'), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.data).toBeDefined()
+    })
+
+    expect(result.current.data?.restoredCriteria).toEqual(MOCK_RESUME_WITH_CRITERIA.lastSubmissionCriteria)
+    expect(result.current.data?.restoredSubmissionId).toBe('sub-1')
+  })
+
+  it('should return null restoredCriteria and restoredSubmissionId when no completed submissions', async () => {
+    setupMock()
+
+    const { useWorkspaceData } = await import('./use-workspace-data')
+    const { result } = renderHook(() => useWorkspaceData('01-kv-store'), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.data).toBeDefined()
+    })
+
+    expect(result.current.data?.restoredCriteria).toBeNull()
+    expect(result.current.data?.restoredSubmissionId).toBeNull()
   })
 
   it('should include stuck detection thresholds in response', async () => {
@@ -139,14 +236,12 @@ describe('useWorkspaceData', () => {
   })
 
   it('should pass through conceptExplainerAssets from API response', async () => {
-    const assetsContent = {
-      ...MOCK_MILESTONE_CONTENT,
+    setupMock({
       conceptExplainerAssets: [
         { name: 'kv-ops.svg', path: '/assets/milestones/01-kv-store/kv-ops.svg', altText: 'KV operations', title: 'KV Ops' },
         { name: 'flow.svg', path: '/assets/milestones/01-kv-store/flow.svg', altText: null, title: null },
       ],
-    }
-    mockApiFetch.mockResolvedValue(assetsContent)
+    })
 
     const { useWorkspaceData } = await import('./use-workspace-data')
     const { result } = renderHook(() => useWorkspaceData('01-kv-store'), { wrapper })

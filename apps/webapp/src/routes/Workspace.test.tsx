@@ -43,6 +43,8 @@ vi.mock('../components/workspace/TerminalPanel', () => ({
     brief: string | null
     criteria: ReadonlyArray<Record<string, unknown>>
     criteriaResults: ReadonlyArray<Record<string, unknown>> | null
+    allCriteriaMet?: boolean
+    onCompleteMilestone?: () => void
     conceptExplainerAssets: ReadonlyArray<Record<string, unknown>>
   }) {
     return (
@@ -54,6 +56,8 @@ vi.mock('../components/workspace/TerminalPanel', () => ({
         data-brief={props.brief ?? ''}
         data-criteria-count={props.criteria.length}
         data-criteria-results={props.criteriaResults ? JSON.stringify(props.criteriaResults) : ''}
+        data-all-criteria-met={String(props.allCriteriaMet ?? false)}
+        data-has-complete-handler={String(!!props.onCompleteMilestone)}
         data-concept-assets-count={props.conceptExplainerAssets.length}
       />
     )
@@ -135,6 +139,8 @@ const MOCK_WORKSPACE_DATA = {
   conceptExplainerAssets: [
     { name: 'kv-ops.svg', path: '/assets/kv-ops.svg', altText: 'KV operations', title: 'KV Ops' },
   ],
+  restoredCriteria: null,
+  restoredSubmissionId: null,
 }
 
 describe('Workspace', () => {
@@ -153,6 +159,7 @@ describe('Workspace', () => {
       isRunning: false,
       outputLines: [],
       criteriaResults: null,
+      allCriteriaMet: false,
     })
     mockResetTimer.mockClear()
     mockScheduleAutoSave.mockClear()
@@ -425,6 +432,229 @@ describe('Workspace', () => {
 
       const terminal = screen.getByTestId('terminal-panel')
       expect(terminal.getAttribute('data-concept-assets-count')).toBe('0')
+    })
+  })
+
+  describe('restored criteria from resume data', () => {
+    it('should show progress from restoredCriteria when no live submission results', () => {
+      mockUseWorkspaceData.mockReturnValue({
+        data: {
+          ...MOCK_WORKSPACE_DATA,
+          restoredCriteria: [
+            { name: 'put-and-get', order: 1, status: 'met', expected: 'PASS', actual: 'PASS' },
+          ],
+          restoredSubmissionId: 'sub-restored',
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      })
+
+      renderWorkspace()
+
+      const terminal = screen.getByTestId('terminal-panel')
+      const results = JSON.parse(terminal.getAttribute('data-criteria-results') ?? '[]') as Array<Record<string, unknown>>
+      expect(results).toHaveLength(1)
+      expect(results[0]).toEqual(expect.objectContaining({ name: 'put-and-get', status: 'met' }))
+    })
+
+    it('should use live submission results over restoredCriteria when both exist', () => {
+      const liveResults = [
+        { name: 'put-and-get', order: 1, status: 'not-met', expected: 'PASS', actual: 'FAIL' },
+      ]
+      mockUseWorkspaceData.mockReturnValue({
+        data: {
+          ...MOCK_WORKSPACE_DATA,
+          restoredCriteria: [
+            { name: 'put-and-get', order: 1, status: 'met', expected: 'PASS', actual: 'PASS' },
+          ],
+          restoredSubmissionId: 'sub-restored',
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      })
+      mockUseSubmitCode.mockReturnValue({
+        submit: mockSubmitFn,
+        submissionId: 'sub-live',
+        isRunning: false,
+        outputLines: [],
+        criteriaResults: liveResults,
+        allCriteriaMet: false,
+      })
+
+      renderWorkspace()
+
+      const terminal = screen.getByTestId('terminal-panel')
+      const results = JSON.parse(terminal.getAttribute('data-criteria-results') ?? '[]') as Array<Record<string, unknown>>
+      expect(results).toHaveLength(1)
+      expect(results[0]).toEqual(expect.objectContaining({ status: 'not-met' }))
+    })
+
+    it('should show criteria tab when restoredCriteria exist', () => {
+      mockUseWorkspaceData.mockReturnValue({
+        data: {
+          ...MOCK_WORKSPACE_DATA,
+          restoredCriteria: [
+            { name: 'put-and-get', order: 1, status: 'met', expected: 'PASS', actual: 'PASS' },
+          ],
+          restoredSubmissionId: 'sub-restored',
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      })
+
+      renderWorkspace()
+
+      expect(useWorkspaceUIStore.getState().activeTerminalTab).toBe('criteria')
+    })
+
+    it('should show brief tab when no restoredCriteria', () => {
+      renderWorkspace()
+
+      expect(useWorkspaceUIStore.getState().activeTerminalTab).toBe('brief')
+    })
+
+    it('should show criteria tab when restoredCriteria exist even without brief', () => {
+      mockUseWorkspaceData.mockReturnValue({
+        data: {
+          ...MOCK_WORKSPACE_DATA,
+          brief: null,
+          restoredCriteria: [
+            { name: 'put-and-get', order: 1, status: 'met', expected: 'PASS', actual: 'PASS' },
+          ],
+          restoredSubmissionId: 'sub-restored',
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      })
+
+      renderWorkspace()
+
+      expect(useWorkspaceUIStore.getState().activeTerminalTab).toBe('criteria')
+    })
+
+    it('should show progress as 0 when no restoredCriteria and no live results', () => {
+      renderWorkspace()
+
+      const terminal = screen.getByTestId('terminal-panel')
+      expect(terminal.getAttribute('data-criteria-results')).toBe('')
+    })
+
+    it('should set allCriteriaMet true when all restored criteria are met', () => {
+      mockUseWorkspaceData.mockReturnValue({
+        data: {
+          ...MOCK_WORKSPACE_DATA,
+          restoredCriteria: [
+            { name: 'put-and-get', order: 1, status: 'met', expected: 'PASS', actual: 'PASS' },
+          ],
+          restoredSubmissionId: 'sub-restored',
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      })
+
+      renderWorkspace()
+
+      const terminal = screen.getByTestId('terminal-panel')
+      expect(terminal.getAttribute('data-all-criteria-met')).toBe('true')
+      expect(terminal.getAttribute('data-has-complete-handler')).toBe('true')
+    })
+
+    it('should not set allCriteriaMet when restored criteria are not all met', () => {
+      mockUseWorkspaceData.mockReturnValue({
+        data: {
+          ...MOCK_WORKSPACE_DATA,
+          restoredCriteria: [
+            { name: 'put-and-get', order: 1, status: 'met', expected: 'PASS', actual: 'PASS' },
+            { name: 'delete-key', order: 2, status: 'not-met', expected: 'PASS', actual: 'FAIL' },
+          ],
+          restoredSubmissionId: 'sub-restored',
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      })
+
+      renderWorkspace()
+
+      const terminal = screen.getByTestId('terminal-panel')
+      expect(terminal.getAttribute('data-all-criteria-met')).toBe('false')
+    })
+
+    it('should provide completion handler when restoredSubmissionId exists and no live submissionId', () => {
+      mockUseWorkspaceData.mockReturnValue({
+        data: {
+          ...MOCK_WORKSPACE_DATA,
+          restoredCriteria: [
+            { name: 'put-and-get', order: 1, status: 'met', expected: 'PASS', actual: 'PASS' },
+          ],
+          restoredSubmissionId: 'sub-restored',
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      })
+
+      renderWorkspace()
+
+      // effectiveSubmissionId falls back to restoredSubmissionId, enabling the handler
+      const terminal = screen.getByTestId('terminal-panel')
+      expect(terminal.getAttribute('data-all-criteria-met')).toBe('true')
+      expect(terminal.getAttribute('data-has-complete-handler')).toBe('true')
+    })
+
+    it('should not provide completion handler when no submissionId available', () => {
+      mockUseWorkspaceData.mockReturnValue({
+        data: {
+          ...MOCK_WORKSPACE_DATA,
+          restoredCriteria: null,
+          restoredSubmissionId: null,
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      })
+
+      renderWorkspace()
+
+      const terminal = screen.getByTestId('terminal-panel')
+      expect(terminal.getAttribute('data-all-criteria-met')).toBe('false')
+    })
+
+    it('should use live submissionId over restoredSubmissionId when both exist', () => {
+      mockUseWorkspaceData.mockReturnValue({
+        data: {
+          ...MOCK_WORKSPACE_DATA,
+          restoredCriteria: [
+            { name: 'put-and-get', order: 1, status: 'met', expected: 'PASS', actual: 'PASS' },
+          ],
+          restoredSubmissionId: 'sub-restored',
+        },
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      })
+      mockUseSubmitCode.mockReturnValue({
+        submit: mockSubmitFn,
+        submissionId: 'sub-live',
+        isRunning: false,
+        outputLines: [],
+        criteriaResults: [
+          { name: 'put-and-get', order: 1, status: 'met', expected: 'PASS', actual: 'PASS' },
+        ],
+        allCriteriaMet: true,
+      })
+
+      renderWorkspace()
+
+      // Live submission results take precedence
+      const terminal = screen.getByTestId('terminal-panel')
+      expect(terminal.getAttribute('data-all-criteria-met')).toBe('true')
+      expect(terminal.getAttribute('data-has-complete-handler')).toBe('true')
     })
   })
 

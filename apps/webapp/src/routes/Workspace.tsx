@@ -90,19 +90,33 @@ function Workspace(): React.ReactElement | null {
     },
   })
 
+  // Use live criteria results if available (from current session submission),
+  // otherwise fall back to restored criteria from last session's submission
+  const effectiveCriteriaResults = criteriaResults ?? data?.restoredCriteria ?? null
+  const effectiveSubmissionId = submissionId ?? data?.restoredSubmissionId ?? null
+  const effectiveAllCriteriaMet = allCriteriaMet || (
+    effectiveCriteriaResults !== null
+    && effectiveCriteriaResults.length > 0
+    && effectiveCriteriaResults.every((r) => r.status === 'met')
+  )
+
   const handleCompleteMilestone = useCallback(() => {
-    if (!milestoneId || !submissionId) return
-    completeMutation.mutate({ mId: milestoneId, sId: submissionId })
-  }, [milestoneId, submissionId, completeMutation])
+    if (!milestoneId || !effectiveSubmissionId) return
+    completeMutation.mutate({ mId: milestoneId, sId: effectiveSubmissionId })
+  }, [milestoneId, effectiveSubmissionId, completeMutation])
 
   // Content-before-tools: show brief tab on initial load so user reads brief while Monaco lazy-loads
-  const briefShownRef = useRef(false)
+  // BUT if restored criteria exist, show criteria tab so user sees their progress
+  const initialTabSetRef = useRef(false)
   useEffect(() => {
-    if (data?.brief && !briefShownRef.current) {
-      briefShownRef.current = true
+    if (!data || initialTabSetRef.current) return
+    initialTabSetRef.current = true
+    if (data.restoredCriteria && data.restoredCriteria.length > 0) {
+      useWorkspaceUIStore.getState().setActiveTerminalTab('criteria')
+    } else if (data.brief) {
       useWorkspaceUIStore.getState().setActiveTerminalTab('brief')
     }
-  }, [data?.brief])
+  }, [data])
 
   if (showLoading) {
     return <WorkspaceSkeleton />
@@ -126,8 +140,8 @@ function Workspace(): React.ReactElement | null {
   }
 
   const criteria = data.criteria ?? []
-  const progress = criteriaResults && criteria.length > 0
-    ? Math.round((criteriaResults.filter((r) => r.status === 'met').length / criteria.length) * 100)
+  const progress = effectiveCriteriaResults && criteria.length > 0
+    ? Math.round((effectiveCriteriaResults.filter((r) => r.status === 'met').length / criteria.length) * 100)
     : 0
 
   return (
@@ -143,8 +157,8 @@ function Workspace(): React.ReactElement | null {
       onRetry={handleRun}
       brief={data.brief}
       criteria={criteria}
-      criteriaResults={criteriaResults}
-      allCriteriaMet={allCriteriaMet}
+      criteriaResults={effectiveCriteriaResults}
+      allCriteriaMet={effectiveAllCriteriaMet}
       onCompleteMilestone={handleCompleteMilestone}
       conceptExplainerAssets={data.conceptExplainerAssets}
     />
