@@ -108,8 +108,8 @@ development_status:
   epic-5-retrospective: optional
 
   # Epic 6: AI Socratic Tutor
-  epic-6: backlog
-  6-1-tutor-backend-and-anthropic-sdk-integration: backlog
+  epic-6: in-progress
+  6-1-tutor-backend-and-anthropic-sdk-integration: done
   6-2-tutor-sse-streaming-and-conversation-persistence: backlog
   6-3-tutor-chat-ui-and-panel-integration: backlog
   6-4-two-stage-stuck-detection-and-proactive-intervention: backlog

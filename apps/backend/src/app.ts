@@ -17,6 +17,7 @@ import { redis } from './shared/redis.js'
 import { createBullMQConnection, createExecutionQueue } from './shared/queue.js'
 import { RateLimiter } from './shared/rate-limiter.js'
 import { createEventPublisher } from './shared/event-publisher.js'
+import Anthropic from '@anthropic-ai/sdk'
 
 export async function buildApp(): Promise<FastifyInstance> {
   const fastify = Fastify({
@@ -62,7 +63,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     eventPublisher,
     redis,
   })
-  await fastify.register(tutorPlugin, { prefix: '/api/tutor' })
+  const tutorRateLimiter = new RateLimiter({ redis, windowMs: 60_000, maxRequests: 30 })
+  const anthropicApiKey = process.env['ANTHROPIC_API_KEY']
+  await fastify.register(tutorPlugin, {
+    prefix: '/api/tutor',
+    redis,
+    rateLimiter: tutorRateLimiter,
+    ...(anthropicApiKey ? { anthropicClient: new Anthropic({ apiKey: anthropicApiKey }) } : {}),
+  })
   await fastify.register(curriculumPlugin, { prefix: '/api/curriculum', redis })
 
   // Serve milestone concept explainer SVG assets

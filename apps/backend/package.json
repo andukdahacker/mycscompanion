@@ -18,6 +18,7 @@
     "db:migrate:make": "kysely migrate:make"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "@bull-board/api": "^6.20.3",
     "@bull-board/fastify": "^6.20.3",
     "@fastify/basic-auth": "^6.2.0",

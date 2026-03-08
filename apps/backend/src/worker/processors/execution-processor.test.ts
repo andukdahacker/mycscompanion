@@ -44,6 +44,7 @@ function createMockContentLoader(): ContentLoader {
     listConceptExplainerAssets: vi.fn().mockResolvedValue([]),
     getStarterCodePath: vi.fn().mockResolvedValue(null),
     loadStarterCode: vi.fn().mockResolvedValue(null),
+    loadMetadata: vi.fn().mockResolvedValue({ title: 'Test', description: '', csConceptLabel: null }),
     invalidateCache: vi.fn().mockResolvedValue(undefined),
     invalidateAllCaches: vi.fn().mockResolvedValue(undefined),
   }

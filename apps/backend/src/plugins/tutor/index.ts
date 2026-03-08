@@ -1,9 +1,66 @@
 import type { FastifyInstance } from 'fastify'
+import type { Kysely } from 'kysely'
+import type { DB } from '@mycscompanion/shared'
+import type { Redis } from 'ioredis'
+import { db as defaultDb } from '../../shared/db.js'
+import type { RateLimitChecker } from '../../shared/rate-limiter.js'
+import type { AnthropicService, AnthropicClient } from './services/anthropic.js'
+import type { ContextAssembler } from './services/context-assembler.js'
+import { createAnthropicService } from './services/anthropic.js'
+import { createContextAssembler } from './services/context-assembler.js'
+import { messageRoutes } from './routes/message.js'
+import { historyRoutes } from './routes/history.js'
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export async function tutorPlugin(fastify: FastifyInstance): Promise<void> {
-  // Routes added in Story 6.x:
-  // GET /:sessionId/stream — SSE stream for tutor responses
-  // POST /:sessionId/message — send message to tutor
-  // GET /:sessionId/messages — get conversation history
+export interface TutorPluginOptions {
+  readonly db?: Kysely<DB>
+  readonly redis?: Redis // Required when contextAssembler is not provided
+  readonly rateLimiter: RateLimitChecker
+  readonly anthropicClient?: AnthropicClient
+  readonly contentRoot?: string
+  // Pre-built services (for testing)
+  readonly anthropicService?: AnthropicService
+  readonly contextAssembler?: ContextAssembler
+}
+
+const unavailableService: AnthropicService = {
+  async createTutorResponse() {
+    throw new Error('Anthropic API key not configured')
+  },
+}
+
+export async function tutorPlugin(
+  fastify: FastifyInstance,
+  opts: TutorPluginOptions
+): Promise<void> {
+  const db = opts.db ?? defaultDb
+
+  // Use injected services, create from client, or fall back to unavailable stub
+  const anthropicService =
+    opts.anthropicService ??
+    (opts.anthropicClient ? createAnthropicService(opts.anthropicClient) : unavailableService)
+
+  let contextAssembler: ContextAssembler
+  if (opts.contextAssembler) {
+    contextAssembler = opts.contextAssembler
+  } else {
+    if (!opts.redis) {
+      throw new Error('redis is required when contextAssembler is not provided')
+    }
+    contextAssembler = createContextAssembler({
+      db,
+      redis: opts.redis,
+      contentRoot: opts.contentRoot,
+    })
+  }
+
+  await fastify.register(messageRoutes, {
+    db,
+    anthropicService,
+    contextAssembler,
+    rateLimiter: opts.rateLimiter,
+  })
+
+  await fastify.register(historyRoutes, { db })
+
+  // SSE stream route added in Story 6.2
 }

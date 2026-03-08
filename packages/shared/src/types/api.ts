@@ -122,3 +122,25 @@ export interface TrackProgressData {
   readonly totalCount: number
 }
 
+// --- Tutor ---
+
+export interface TutorMessageRequest {
+  readonly message: string
+}
+
+export interface TutorMessageResponse {
+  readonly id: string
+  readonly role: 'assistant'
+  readonly content: string
+  readonly model: string
+  readonly createdAt: string
+}
+
+export interface TutorConversationMessage {
+  readonly id: string
+  readonly role: 'user' | 'assistant'
+  readonly content: string
+  readonly model: string | null
+  readonly createdAt: string
+}
+
