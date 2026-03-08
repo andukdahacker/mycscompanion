@@ -8,6 +8,7 @@ import { autoSaveRoutes } from './routes/auto-save.js'
 import { latestSnapshotRoutes } from './routes/latest-snapshot.js'
 import { sessionRoutes } from './routes/sessions.js'
 import { resumeRoutes } from './routes/resume.js'
+import { sessionEndRoutes } from './routes/session-end.js'
 
 export interface ProgressPluginOptions {
   readonly db?: Kysely<DB>
@@ -25,4 +26,5 @@ export async function progressPlugin(
   await fastify.register(latestSnapshotRoutes, { db })
   await fastify.register(sessionRoutes, { db })
   await fastify.register(resumeRoutes, { db })
+  await fastify.register(sessionEndRoutes, { db })
 }

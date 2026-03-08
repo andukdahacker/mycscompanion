@@ -12,6 +12,7 @@ import { useStuckDetection } from '../hooks/use-stuck-detection'
 import { useAutoSave } from '../hooks/use-auto-save'
 import { useSession } from '../hooks/use-session'
 import { apiFetch } from '../lib/api-fetch'
+import { endSession } from '../lib/end-session'
 import { useEditorStore } from '../stores/editor-store'
 import { useWorkspaceUIStore } from '../stores/workspace-ui-store'
 
@@ -33,10 +34,15 @@ function Workspace(): React.ReactElement | null {
   })
 
   // Create or retrieve session on workspace mount (fire-and-forget)
+  const sessionIdRef = useRef<string | null>(null)
   const sessionMutation = useSession(milestoneId ?? '')
   useEffect(() => {
     if (milestoneId) {
-      sessionMutation.mutate()
+      sessionMutation.mutate(undefined, {
+        onSuccess: (data) => {
+          sessionIdRef.current = data.session.id
+        },
+      })
     }
   }, [milestoneId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -55,14 +61,23 @@ function Workspace(): React.ReactElement | null {
     return unsubscribe
   }, [resetTimer, scheduleAutoSave])
 
-  // beforeunload — best-effort last-chance save
+  // beforeunload — best-effort last-chance save + session end
   useEffect(() => {
     const handleBeforeUnload = () => {
       saveImmediately(currentCodeRef.current)
+      endSession(sessionIdRef.current)
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [saveImmediately])
+
+  // End session when Workspace unmounts (route change, sign-out, etc.)
+  // beforeunload only fires on tab/browser close — NOT on SPA navigation.
+  useEffect(() => {
+    return () => {
+      endSession(sessionIdRef.current)
+    }
+  }, [])
 
   const handleRun = useCallback(() => {
     if (!milestoneId) return

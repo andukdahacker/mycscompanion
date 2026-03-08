@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import type { Kysely } from 'kysely'
 import type { DB } from '@mycscompanion/shared'
 import type { CriterionResult, OverviewData, OverviewCriteriaProgress } from '@mycscompanion/shared'
+import { processStaleSessionsForUser, backfillLatestSessionSummary } from '../services/stale-session-handler.js'
 
 const BRIEF_EXCERPT_LENGTH = 200
 
@@ -23,6 +24,9 @@ export async function overviewRoutes(
 
   fastify.get('/overview', async (request) => {
     const uid = request.uid
+
+    // Process stale sessions (lazy heartbeat timeout)
+    await processStaleSessionsForUser(db, uid, fastify.log)
 
     // Check if user has any completions or submissions
     const [completionCount, submissionCount] = await Promise.all([
@@ -102,10 +106,21 @@ export async function overviewRoutes(
       }
     }
 
-    // Load content for brief excerpt and CS concept label
-    const [brief, metadata] = await Promise.all([
+    // Backfill summary if missing (browser crash recovery)
+    await backfillLatestSessionSummary(db, uid, activeMilestone.id)
+
+    // Load content for brief excerpt, CS concept label, and latest session summary
+    const [brief, metadata, latestSummary] = await Promise.all([
       contentLoader.loadMilestoneBrief(activeMilestone.slug),
       contentLoader.loadMetadata(activeMilestone.slug),
+      db
+        .selectFrom('session_summaries')
+        .select(['summary_text'])
+        .where('user_id', '=', uid)
+        .where('milestone_id', '=', activeMilestone.id)
+        .orderBy('created_at', 'desc')
+        .limit(1)
+        .executeTakeFirst(),
     ])
 
     const briefExcerpt = brief ? brief.slice(0, BRIEF_EXCERPT_LENGTH) : ''
@@ -147,7 +162,7 @@ export async function overviewRoutes(
         csConceptLabel: metadata.csConceptLabel,
       },
       criteriaProgress,
-      sessionSummary: null,
+      sessionSummary: latestSummary?.summary_text ?? null,
       lastBenchmark: null,
       benchmarkTrend: null,
     }

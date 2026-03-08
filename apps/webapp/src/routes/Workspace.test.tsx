@@ -121,6 +121,12 @@ vi.mock('../hooks/use-session', () => ({
   useSession: () => ({ mutate: mockSessionMutate, isSuccess: false, data: null }),
 }))
 
+// Mock endSession
+const mockEndSession = vi.fn()
+vi.mock('../lib/end-session', () => ({
+  endSession: (...args: unknown[]) => mockEndSession(...args),
+}))
+
 // Mock useSSE (needed by useSubmitCode, but since we mock useSubmitCode we just need the module to exist)
 vi.mock('../hooks/use-sse', () => ({
   useSSE: vi.fn(() => ({ status: 'idle', error: null, reconnectCount: 0 })),
@@ -165,6 +171,7 @@ describe('Workspace', () => {
     mockScheduleAutoSave.mockClear()
     mockSaveImmediately.mockClear()
     mockSessionMutate.mockClear()
+    mockEndSession.mockClear()
     useWorkspaceUIStore.setState({ activeTerminalTab: 'output' })
   })
 
@@ -679,6 +686,42 @@ describe('Workspace', () => {
       unmount()
 
       expect(removeSpy).toHaveBeenCalledWith('beforeunload', expect.any(Function))
+    })
+
+    it('should call endSession on beforeunload', () => {
+      // Make session mutation capture sessionId
+      mockSessionMutate.mockImplementation((_: unknown, opts?: { onSuccess?: (data: { session: { id: string } }) => void }) => {
+        opts?.onSuccess?.({ session: { id: 'test-session-id' } })
+      })
+
+      renderWorkspace()
+
+      window.dispatchEvent(new Event('beforeunload'))
+
+      expect(mockEndSession).toHaveBeenCalledWith('test-session-id')
+    })
+
+    it('should call endSession with sessionId from session creation', () => {
+      mockSessionMutate.mockImplementation((_: unknown, opts?: { onSuccess?: (data: { session: { id: string } }) => void }) => {
+        opts?.onSuccess?.({ session: { id: 'captured-session-id' } })
+      })
+
+      renderWorkspace()
+
+      window.dispatchEvent(new Event('beforeunload'))
+
+      expect(mockEndSession).toHaveBeenCalledWith('captured-session-id')
+    })
+
+    it('should call endSession on component unmount (route navigation coverage)', () => {
+      mockSessionMutate.mockImplementation((_: unknown, opts?: { onSuccess?: (data: { session: { id: string } }) => void }) => {
+        opts?.onSuccess?.({ session: { id: 'unmount-session-id' } })
+      })
+
+      const { unmount } = renderWorkspace()
+      unmount()
+
+      expect(mockEndSession).toHaveBeenCalledWith('unmount-session-id')
     })
   })
 })

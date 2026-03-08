@@ -102,7 +102,7 @@ development_status:
   epic-5: in-progress
   5-1-auto-save-and-code-snapshot-persistence: done
   5-2-session-resume-and-continue-building: done
-  5-3-session-summary-generation: backlog
+  5-3-session-summary-generation: done
   5-4-session-summary-display-for-returning-users: backlog
   5-5-overall-progress-view: backlog
   epic-5-retrospective: optional

@@ -62,8 +62,11 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  await db.deleteFrom('session_summaries').execute()
+  await db.deleteFrom('code_snapshots').execute()
   await db.deleteFrom('user_milestones').execute()
   await db.deleteFrom('submissions').execute()
+  await db.deleteFrom('sessions').execute()
   await db.deleteFrom('milestones').execute()
   await db.deleteFrom('tracks').execute()
   await db.deleteFrom('users').execute()
@@ -236,7 +239,57 @@ describe('GET /api/progress/overview', () => {
     expect(body.criteriaProgress.nextCriterionName).toBeNull()
   })
 
-  it('should always return null for sessionSummary and lastBenchmark placeholders', async () => {
+  it('should return null for lastBenchmark and benchmarkTrend placeholders', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/progress/overview',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.lastBenchmark).toBeNull()
+    expect(body.benchmarkTrend).toBeNull()
+  })
+
+  it('should return sessionSummary when summary exists for active milestone', async () => {
+    // Create an ended session with a summary
+    const sessId = generateId()
+    await db
+      .insertInto('sessions')
+      .values({
+        id: sessId,
+        user_id: userId,
+        milestone_id: milestoneId,
+        is_active: false,
+        started_at: new Date('2026-03-01T10:00:00Z'),
+        ended_at: new Date('2026-03-01T11:00:00Z'),
+      })
+      .execute()
+
+    await db
+      .insertInto('session_summaries')
+      .values({
+        id: generateId(),
+        user_id: userId,
+        session_id: sessId,
+        milestone_id: milestoneId,
+        summary_text: 'Working on Simple Key-Value Store. 2 of 5 criteria met.',
+      })
+      .execute()
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/progress/overview',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.sessionSummary).toBe('Working on Simple Key-Value Store. 2 of 5 criteria met.')
+  })
+
+  it('should return sessionSummary: null when no summary exists', async () => {
     const response = await app.inject({
       method: 'GET',
       url: '/api/progress/overview',
@@ -246,8 +299,6 @@ describe('GET /api/progress/overview', () => {
     expect(response.statusCode).toBe(200)
     const body = response.json()
     expect(body.sessionSummary).toBeNull()
-    expect(body.lastBenchmark).toBeNull()
-    expect(body.benchmarkTrend).toBeNull()
   })
 
   it('should return 401 when no auth token provided', async () => {
