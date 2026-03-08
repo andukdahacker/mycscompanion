@@ -1,6 +1,5 @@
 import { useNavigate } from 'react-router'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@mycscompanion/ui/src/components/ui/card'
 import type { OverviewData } from '@mycscompanion/shared'
 
 interface MilestoneStartOverviewProps {
@@ -11,12 +10,18 @@ function MilestoneStartOverview({ data }: MilestoneStartOverviewProps): React.Re
   const navigate = useNavigate()
   const { milestone, criteriaProgress } = data
 
-  const progressPercent = criteriaProgress && criteriaProgress.total > 0
-    ? Math.round((criteriaProgress.met / criteriaProgress.total) * 100)
-    : 0
-
   function handleContinue(): void {
     navigate(`/workspace/${milestone.id}`)
+  }
+
+  function progressText(): string {
+    if (!criteriaProgress) {
+      return 'No submissions'
+    }
+    const percent = criteriaProgress.total > 0
+      ? Math.round((criteriaProgress.met / criteriaProgress.total) * 100)
+      : 0
+    return `${criteriaProgress.met}/${criteriaProgress.total} criteria (${percent}%)`
   }
 
   function nextStepText(): string {
@@ -39,58 +44,28 @@ function MilestoneStartOverview({ data }: MilestoneStartOverviewProps): React.Re
           {milestone.csConceptLabel ? (
             <p className="mt-1 text-sm text-muted-foreground">{milestone.csConceptLabel}</p>
           ) : null}
-          {criteriaProgress ? (
-            <p className="mt-2 text-sm text-muted-foreground">
-              {criteriaProgress.met} of {criteriaProgress.total} criteria met — {progressPercent}%
-            </p>
-          ) : null}
         </section>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <section aria-label="Benchmark">
-            <Card className="border-dashed">
-              <CardHeader>
-                <CardTitle className="text-sm font-medium">Benchmark</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl text-muted-foreground">—</p>
-              </CardContent>
-            </Card>
-          </section>
+        <section aria-label="Milestone statistics" className="flex items-baseline gap-6">
+          <div aria-label="Progress">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Progress</span>
+            <p className="text-sm font-semibold text-foreground">{progressText()}</p>
+          </div>
 
-          <section aria-label="Next step">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm font-medium">Next Step</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-foreground">{nextStepText()}</p>
-              </CardContent>
-            </Card>
-          </section>
+          <div aria-label="Benchmark">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Benchmark</span>
+            <p className="text-sm text-muted-foreground">—</p>
+          </div>
 
-          <section aria-label="Context" className="sm:col-span-2">
-            {data.sessionSummary ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium">Context</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-foreground">{data.sessionSummary}</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="border-dashed">
-                <CardHeader>
-                  <CardTitle className="text-sm font-medium">Context</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-2xl text-muted-foreground">—</p>
-                </CardContent>
-              </Card>
-            )}
-          </section>
-        </div>
+          <div aria-label="Next step">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next</span>
+            <p className="text-sm font-semibold text-foreground">{nextStepText()}</p>
+          </div>
+        </section>
+
+        {data.sessionSummary ? (
+          <p className="text-sm text-muted-foreground">{data.sessionSummary}</p>
+        ) : null}
 
         <div className="flex justify-center">
           <Button size="lg" onClick={handleContinue}>
