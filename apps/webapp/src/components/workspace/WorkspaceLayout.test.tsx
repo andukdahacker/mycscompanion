@@ -40,6 +40,22 @@ vi.mock('./TerminalPanel', () => ({
   },
 }))
 
+// Mock TutorPanel
+vi.mock('./TutorPanel', () => ({
+  TutorPanel: function MockTutorPanel(props: { sessionId: string | null; readOnly?: boolean }) {
+    return (
+      <div
+        data-testid="tutor-chat-mock"
+        data-session-id={props.sessionId ?? ''}
+        data-read-only={String(props.readOnly ?? false)}
+      >
+        <p className="text-sm text-muted-foreground">AI tutor temporarily unavailable</p>
+        <button>Retry</button>
+      </div>
+    )
+  },
+}))
+
 // Polyfills for react-resizable-panels in jsdom
 beforeAll(() => {
   globalThis.ResizeObserver = class {
@@ -76,6 +92,7 @@ describe('WorkspaceLayout', () => {
     criteria: [] as ReadonlyArray<AcceptanceCriterion>,
     criteriaResults: null,
     conceptExplainerAssets: [] as readonly ConceptExplainerAsset[],
+    sessionId: null as string | null,
   }
 
   beforeEach(() => {

@@ -6,13 +6,13 @@ import {
   usePanelRef,
 } from '@mycscompanion/ui/src/components/ui/resizable'
 import type { PanelSize } from '@mycscompanion/ui/src/components/ui/resizable'
-import { Button } from '@mycscompanion/ui/src/components/ui/button'
-import { MessageCircle, RefreshCw } from 'lucide-react'
+import { MessageCircle } from 'lucide-react'
 import type { AcceptanceCriterion, ConceptExplainerAsset, CriterionResult } from '@mycscompanion/shared'
 import { WorkspaceTopBar } from './WorkspaceTopBar'
 import { CodeEditor } from './CodeEditor'
 import { TerminalPanel } from './TerminalPanel'
 import type { OutputLine } from './TerminalPanel'
+import { TutorPanel } from './TutorPanel'
 import { useWorkspaceUIStore } from '../../stores/workspace-ui-store'
 
 interface WorkspaceLayoutProps {
@@ -31,6 +31,7 @@ interface WorkspaceLayoutProps {
   readonly allCriteriaMet?: boolean
   readonly onCompleteMilestone?: () => void
   readonly conceptExplainerAssets: readonly ConceptExplainerAsset[]
+  readonly sessionId: string | null
 }
 
 function WorkspaceLayout({
@@ -49,14 +50,13 @@ function WorkspaceLayout({
   allCriteriaMet,
   onCompleteMilestone,
   conceptExplainerAssets,
+  sessionId,
 }: WorkspaceLayoutProps): React.ReactElement {
   const breakpointMode = useWorkspaceUIStore((s) => s.breakpointMode)
   const setBreakpointMode = useWorkspaceUIStore((s) => s.setBreakpointMode)
   const tutorExpanded = useWorkspaceUIStore((s) => s.tutorExpanded)
-  const tutorAvailable = useWorkspaceUIStore((s) => s.tutorAvailable)
   const setTutorExpanded = useWorkspaceUIStore((s) => s.setTutorExpanded)
   const toggleTutor = useWorkspaceUIStore((s) => s.toggleTutor)
-  const setTutorAvailable = useWorkspaceUIStore((s) => s.setTutorAvailable)
 
   const tutorPanelRef = usePanelRef()
 
@@ -81,6 +81,9 @@ function WorkspaceLayout({
 
       if (e.key === 'Escape' && tutorExpanded) {
         setTutorExpanded(false)
+        // Move focus back to Monaco editor on collapse
+        const editorTextarea = document.querySelector<HTMLTextAreaElement>('.monaco-editor textarea')
+        if (editorTextarea) editorTextarea.focus()
         return
       }
 
@@ -120,7 +123,14 @@ function WorkspaceLayout({
 
   // Mobile layout
   if (breakpointMode === 'mobile') {
-    return <MobileLayout milestoneName={milestoneName} milestoneNumber={milestoneNumber} progress={progress} />
+    return (
+      <MobileLayout
+        milestoneName={milestoneName}
+        milestoneNumber={milestoneNumber}
+        progress={progress}
+        sessionId={sessionId}
+      />
+    )
   }
 
   const topBarProps = { milestoneName, milestoneNumber, progress, onRun, onBenchmark }
@@ -154,13 +164,7 @@ function WorkspaceLayout({
                 data-testid="tutor-overlay"
                 className="fixed right-0 top-12 z-40 flex h-[calc(100vh-48px)] w-[300px] flex-col border-l bg-background shadow-lg"
               >
-                <div className="flex items-center justify-between border-b p-3">
-                  <span className="text-sm font-medium">AI Tutor</span>
-                  <Button variant="ghost" size="icon-xs" onClick={() => setTutorExpanded(false)}>
-                    &times;
-                  </Button>
-                </div>
-                <TutorContent tutorAvailable={tutorAvailable} onRetry={() => setTutorAvailable(true)} />
+                <TutorPanel sessionId={sessionId} />
               </div>
             </>
           )}
@@ -208,7 +212,7 @@ function WorkspaceLayout({
         >
           <div data-testid="tutor-panel" className="flex h-full flex-col">
             {tutorExpanded ? (
-              <TutorContent tutorAvailable={tutorAvailable} onRetry={() => setTutorAvailable(true)} />
+              <TutorPanel sessionId={sessionId} />
             ) : (
               <button
                 className="flex h-full w-full items-center justify-center text-muted-foreground hover:text-foreground"
@@ -226,34 +230,6 @@ function WorkspaceLayout({
   )
 }
 
-function TutorContent({
-  tutorAvailable,
-  onRetry,
-}: {
-  readonly tutorAvailable: boolean
-  readonly onRetry: () => void
-}): React.ReactElement {
-  if (!tutorAvailable) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center">
-        <MessageCircle className="size-8 text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">AI tutor temporarily unavailable</p>
-        <Button variant="outline" size="sm" onClick={onRetry}>
-          <RefreshCw className="size-3.5" />
-          Retry
-        </Button>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center p-4 text-center text-muted-foreground">
-      <MessageCircle className="mb-2 size-8" />
-      <p className="text-sm">AI Tutor (Epic 6)</p>
-    </div>
-  )
-}
-
 export { WorkspaceLayout }
 export type { WorkspaceLayoutProps }
 
@@ -261,18 +237,31 @@ function MobileLayout({
   milestoneName,
   milestoneNumber,
   progress,
+  sessionId,
 }: {
   readonly milestoneName: string
   readonly milestoneNumber: number
   readonly progress: number
+  readonly sessionId: string | null
 }): React.ReactElement {
+  const tutorExpanded = useWorkspaceUIStore((s) => s.tutorExpanded)
+
   return (
-    <div className="flex h-screen flex-col items-center justify-center bg-background p-6 text-center">
-      <h2 className="mb-2 text-lg font-medium">
-        Milestone {milestoneNumber}: {milestoneName}
-      </h2>
-      <p className="mb-4 text-2xl font-bold">{progress}%</p>
-      <p className="text-muted-foreground">Continue on desktop to build</p>
+    <div className="flex h-screen flex-col bg-background">
+      <div className="flex flex-col items-center justify-center p-6 text-center">
+        <h2 className="mb-2 text-lg font-medium">
+          Milestone {milestoneNumber}: {milestoneName}
+        </h2>
+        <p className="mb-4 text-2xl font-bold">{progress}%</p>
+        <p className="text-muted-foreground">Continue on desktop to build</p>
+      </div>
+      {/* Read-only tutor panel on mobile */}
+      {tutorExpanded && (
+        <div className="flex-1 border-t">
+          <TutorPanel sessionId={sessionId} readOnly />
+        </div>
+      )}
+      <div id="workspace-announcer" aria-live="polite" role="status" className="sr-only" />
     </div>
   )
 }

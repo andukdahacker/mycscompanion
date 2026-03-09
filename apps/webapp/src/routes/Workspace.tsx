@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useMutation } from '@tanstack/react-query'
 import type { CompleteMilestoneResponse } from '@mycscompanion/shared'
@@ -34,6 +34,7 @@ function Workspace(): React.ReactElement | null {
   })
 
   // Create or retrieve session on workspace mount (fire-and-forget)
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const sessionIdRef = useRef<string | null>(null)
   const sessionMutation = useSession(milestoneId ?? '')
   useEffect(() => {
@@ -41,6 +42,7 @@ function Workspace(): React.ReactElement | null {
       sessionMutation.mutate(undefined, {
         onSuccess: (data) => {
           sessionIdRef.current = data.session.id
+          setSessionId(data.session.id)
         },
       })
     }
@@ -176,6 +178,7 @@ function Workspace(): React.ReactElement | null {
       allCriteriaMet={effectiveAllCriteriaMet}
       onCompleteMilestone={handleCompleteMilestone}
       conceptExplainerAssets={data.conceptExplainerAssets}
+      sessionId={sessionId}
     />
   )
 }

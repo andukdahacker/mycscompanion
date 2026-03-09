@@ -111,7 +111,7 @@ development_status:
   epic-6: in-progress
   6-1-tutor-backend-and-anthropic-sdk-integration: done
   6-2-tutor-sse-streaming-and-conversation-persistence: done
-  6-3-tutor-chat-ui-and-panel-integration: backlog
+  6-3-tutor-chat-ui-and-panel-integration: done
   6-4-two-stage-stuck-detection-and-proactive-intervention: backlog
   6-5-tutor-surfaced-concept-explainers: backlog
   6-6-graceful-degradation-and-availability: backlog

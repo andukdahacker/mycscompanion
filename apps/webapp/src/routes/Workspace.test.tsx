@@ -78,6 +78,13 @@ vi.mock('../components/workspace/workspace-a11y', () => ({
   announceToScreenReader: vi.fn(),
 }))
 
+// Mock TutorPanel
+vi.mock('../components/workspace/TutorPanel', () => ({
+  TutorPanel: function MockTutorPanel(props: { sessionId: string | null; readOnly?: boolean }) {
+    return <div data-testid="tutor-chat-mock" data-session-id={props.sessionId ?? ''} />
+  },
+}))
+
 // Mock editor store
 vi.mock('../stores/editor-store', () => ({
   useEditorStore: Object.assign(
