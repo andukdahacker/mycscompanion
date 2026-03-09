@@ -18,6 +18,9 @@ const mockAnthropicService: AnthropicService = {
     content: 'What do you think happens when the process exits?',
     model: 'claude-haiku-4-5-20251001',
   })),
+  createStreamingTutorResponse: vi.fn(() => {
+    throw new Error('Not implemented in message tests')
+  }),
 }
 
 const mockContextAssembler: ContextAssembler = {
@@ -307,7 +310,8 @@ describe('POST /api/tutor/:sessionId/message', () => {
   })
 
   it('should include previous messages in conversation history', async () => {
-    // Insert a previous message exchange
+    // Insert a previous message exchange with explicit timestamps for stable ordering
+    const baseTime = new Date()
     await db
       .insertInto('tutor_messages')
       .values([
@@ -318,6 +322,7 @@ describe('POST /api/tutor/:sessionId/message', () => {
           role: 'user',
           content: 'How do I persist data?',
           model: null,
+          created_at: new Date(baseTime.getTime()),
         },
         {
           id: generateId(),
@@ -326,6 +331,7 @@ describe('POST /api/tutor/:sessionId/message', () => {
           role: 'assistant',
           content: 'What happens when the process exits?',
           model: 'claude-haiku-4-5-20251001',
+          created_at: new Date(baseTime.getTime() + 1),
         },
       ])
       .execute()

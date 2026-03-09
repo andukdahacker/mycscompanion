@@ -18,6 +18,9 @@ const mockAnthropicService: AnthropicService = {
     content: 'response',
     model: 'claude-haiku-4-5-20251001',
   })),
+  createStreamingTutorResponse: vi.fn(() => {
+    throw new Error('Not implemented in history tests')
+  }),
 }
 
 const mockContextAssembler: ContextAssembler = {

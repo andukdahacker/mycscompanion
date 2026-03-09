@@ -5,6 +5,7 @@ import type { TutorMessageResponse } from '@mycscompanion/shared'
 import type { RateLimitChecker } from '../../../shared/rate-limiter.js'
 import type { AnthropicService } from '../services/anthropic.js'
 import type { ContextAssembler } from '../services/context-assembler.js'
+import { loadConversationHistory } from '../services/conversation-history.js'
 import { generateId } from '../../../shared/id.js'
 import * as Sentry from '@sentry/node'
 
@@ -92,23 +93,10 @@ export async function messageRoutes(
       }
 
       // 4. Load conversation history (cap at 50 most recent to limit token cost)
-      const MAX_HISTORY_MESSAGES = 50
-      const recentMessages = await db
-        .selectFrom('tutor_messages')
-        .select(['role', 'content'])
-        .where('session_id', '=', sessionId)
-        .orderBy('created_at', 'desc')
-        .orderBy('id', 'desc')
-        .limit(MAX_HISTORY_MESSAGES)
-        .execute()
-
-      const previousMessages = recentMessages.reverse()
+      const previousMessages = await loadConversationHistory(db, sessionId)
 
       const conversationHistory = [
-        ...previousMessages.map((m) => ({
-          role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
-          content: m.content,
-        })),
+        ...previousMessages,
         { role: 'user' as const, content: message },
       ]
 

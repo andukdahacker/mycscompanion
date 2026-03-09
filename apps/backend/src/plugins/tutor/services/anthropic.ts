@@ -1,3 +1,18 @@
+export interface AnthropicMessageStream {
+  on(event: 'text', handler: (textDelta: string, textSnapshot: string) => void): AnthropicMessageStream
+  on(event: 'finalMessage', handler: (message: {
+    content: Array<{ type: string; text?: string }>
+    model: string
+    usage: {
+      input_tokens: number
+      output_tokens: number
+      cache_creation_input_tokens?: number
+      cache_read_input_tokens?: number
+    }
+  }) => void): AnthropicMessageStream
+  on(event: 'error', handler: (error: Error) => void): AnthropicMessageStream
+}
+
 export interface AnthropicClient {
   readonly messages: {
     create(body: {
@@ -8,6 +23,12 @@ export interface AnthropicClient {
     }): Promise<{
       content: Array<{ type: string; text?: string }>
     }>
+    stream(body: {
+      model: string
+      max_tokens: number
+      system: string
+      messages: Array<{ role: 'user' | 'assistant'; content: string }>
+    }): AnthropicMessageStream
   }
 }
 
@@ -40,6 +61,7 @@ export interface AnthropicService {
     readonly content: string
     readonly model: string
   }>
+  createStreamingTutorResponse(params: TutorRequestParams): AnthropicMessageStream
 }
 
 export function createAnthropicService(client: AnthropicClient): AnthropicService {
@@ -63,6 +85,20 @@ export function createAnthropicService(client: AnthropicClient): AnthropicServic
       const content = textBlock?.text ?? ''
 
       return { content, model }
+    },
+
+    createStreamingTutorResponse(params: TutorRequestParams) {
+      const model = selectModel(params.context)
+
+      return client.messages.stream({
+        model,
+        max_tokens: 1024,
+        system: params.systemPrompt,
+        messages: params.conversationHistory.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+        })),
+      })
     },
   }
 }

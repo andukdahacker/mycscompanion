@@ -1,6 +1,58 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { selectModel, createAnthropicService } from './anthropic.js'
-import type { TutorContext, TutorRequestParams, AnthropicClient } from './anthropic.js'
+import type { TutorContext, TutorRequestParams, AnthropicClient, AnthropicMessageStream } from './anthropic.js'
+
+function createMockClient(overrides: {
+  create?: AnthropicClient['messages']['create']
+  stream?: AnthropicClient['messages']['stream']
+} = {}): AnthropicClient {
+  return {
+    messages: {
+      create: overrides.create ?? vi.fn<AnthropicClient['messages']['create']>(),
+      stream: overrides.stream ?? vi.fn<AnthropicClient['messages']['stream']>(),
+    },
+  }
+}
+
+function createMockStream(chunks: string[]): AnthropicMessageStream {
+  const handlers = new Map<string, (...args: never[]) => void>()
+
+  const mock: AnthropicMessageStream = {
+    on(event: string, handler: (...args: never[]) => void) {
+      handlers.set(event, handler)
+      return mock
+    },
+  }
+
+  process.nextTick(() => {
+    const textHandler = handlers.get('text')
+    const finalHandler = handlers.get('finalMessage')
+
+    if (textHandler) {
+      let snapshot = ''
+      for (const chunk of chunks) {
+        snapshot += chunk
+        ;(textHandler as (delta: string, snapshot: string) => void)(chunk, snapshot)
+      }
+    }
+
+    if (finalHandler) {
+      const fullText = chunks.join('')
+      ;(finalHandler as (msg: unknown) => void)({
+        content: [{ type: 'text', text: fullText }],
+        model: 'claude-haiku-4-5-20251001',
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+          cache_creation_input_tokens: 1200,
+          cache_read_input_tokens: 0,
+        },
+      })
+    }
+  })
+
+  return mock
+}
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -47,7 +99,7 @@ describe('createAnthropicService', () => {
         model: 'claude-haiku-4-5-20251001',
       })
 
-      const mockClient: AnthropicClient = { messages: { create: mockCreate } }
+      const mockClient = createMockClient({ create: mockCreate })
       const service = createAnthropicService(mockClient)
 
       const params: TutorRequestParams = {
@@ -74,7 +126,7 @@ describe('createAnthropicService', () => {
         model: 'claude-sonnet-4-6-20250514',
       })
 
-      const mockClient: AnthropicClient = { messages: { create: mockCreate } }
+      const mockClient = createMockClient({ create: mockCreate })
       const service = createAnthropicService(mockClient)
 
       const params: TutorRequestParams = {
@@ -93,7 +145,7 @@ describe('createAnthropicService', () => {
     it('should handle API errors by propagating them', async () => {
       const mockCreate = vi.fn().mockRejectedValue(new Error('API unavailable'))
 
-      const mockClient: AnthropicClient = { messages: { create: mockCreate } }
+      const mockClient = createMockClient({ create: mockCreate })
       const service = createAnthropicService(mockClient)
 
       const params: TutorRequestParams = {
@@ -111,7 +163,7 @@ describe('createAnthropicService', () => {
         model: 'claude-haiku-4-5-20251001',
       })
 
-      const mockClient: AnthropicClient = { messages: { create: mockCreate } }
+      const mockClient = createMockClient({ create: mockCreate })
       const service = createAnthropicService(mockClient)
 
       const params: TutorRequestParams = {
@@ -122,6 +174,81 @@ describe('createAnthropicService', () => {
 
       const result = await service.createTutorResponse(params)
       expect(result.content).toBe('')
+    })
+  })
+
+  describe('createStreamingTutorResponse', () => {
+    it('should call client.messages.stream with correct parameters', () => {
+      const mockStreamFn = vi.fn().mockReturnValue(createMockStream(['Hello']))
+      const mockClient = createMockClient({ stream: mockStreamFn })
+      const service = createAnthropicService(mockClient)
+
+      const params: TutorRequestParams = {
+        systemPrompt: 'You are a tutor',
+        conversationHistory: [{ role: 'user', content: 'Help me' }],
+        context: { userMessage: 'Help me', hasCompileErrors: false },
+      }
+
+      service.createStreamingTutorResponse(params)
+
+      expect(mockStreamFn).toHaveBeenCalledWith({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: 'You are a tutor',
+        messages: [{ role: 'user', content: 'Help me' }],
+      })
+    })
+
+    it('should select Sonnet when compile errors are present', () => {
+      const mockStreamFn = vi.fn().mockReturnValue(createMockStream(['Hi']))
+      const mockClient = createMockClient({ stream: mockStreamFn })
+      const service = createAnthropicService(mockClient)
+
+      const params: TutorRequestParams = {
+        systemPrompt: 'You are a tutor',
+        conversationHistory: [{ role: 'user', content: 'help' }],
+        context: { userMessage: 'help', hasCompileErrors: true },
+      }
+
+      service.createStreamingTutorResponse(params)
+
+      expect(mockStreamFn).toHaveBeenCalledWith(
+        expect.objectContaining({ model: 'claude-sonnet-4-6-20250514' })
+      )
+    })
+
+    it('should return an AnthropicMessageStream with event handlers', async () => {
+      const mockStreamFn = vi.fn().mockReturnValue(createMockStream(['Hello', ' world']))
+      const mockClient = createMockClient({ stream: mockStreamFn })
+      const service = createAnthropicService(mockClient)
+
+      const params: TutorRequestParams = {
+        systemPrompt: 'You are a tutor',
+        conversationHistory: [{ role: 'user', content: 'help' }],
+        context: { userMessage: 'help', hasCompileErrors: false },
+      }
+
+      const stream = service.createStreamingTutorResponse(params)
+
+      const textDeltas: string[] = []
+      let finalMessage: unknown = null
+
+      stream.on('text', (delta: string) => {
+        textDeltas.push(delta)
+      })
+      stream.on('finalMessage', (msg) => {
+        finalMessage = msg
+      })
+
+      await new Promise((resolve) => process.nextTick(resolve))
+
+      expect(textDeltas).toEqual(['Hello', ' world'])
+      expect(finalMessage).toEqual(
+        expect.objectContaining({
+          content: [{ type: 'text', text: 'Hello world' }],
+          model: 'claude-haiku-4-5-20251001',
+        })
+      )
     })
   })
 })

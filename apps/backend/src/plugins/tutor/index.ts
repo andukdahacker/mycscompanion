@@ -10,6 +10,7 @@ import { createAnthropicService } from './services/anthropic.js'
 import { createContextAssembler } from './services/context-assembler.js'
 import { messageRoutes } from './routes/message.js'
 import { historyRoutes } from './routes/history.js'
+import { streamRoutes } from './routes/stream.js'
 
 export interface TutorPluginOptions {
   readonly db?: Kysely<DB>
@@ -24,6 +25,9 @@ export interface TutorPluginOptions {
 
 const unavailableService: AnthropicService = {
   async createTutorResponse() {
+    throw new Error('Anthropic API key not configured')
+  },
+  createStreamingTutorResponse() {
     throw new Error('Anthropic API key not configured')
   },
 }
@@ -62,5 +66,10 @@ export async function tutorPlugin(
 
   await fastify.register(historyRoutes, { db })
 
-  // SSE stream route added in Story 6.2
+  await fastify.register(streamRoutes, {
+    db,
+    anthropicService,
+    contextAssembler,
+    rateLimiter: opts.rateLimiter,
+  })
 }

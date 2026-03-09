@@ -144,3 +144,25 @@ export interface TutorConversationMessage {
   readonly createdAt: string
 }
 
+// --- Tutor SSE Streaming Events ---
+
+export interface TutorStreamTextDelta {
+  readonly type: 'text_delta'
+  readonly delta: string
+}
+
+export interface TutorStreamMessageComplete {
+  readonly type: 'message_complete'
+  readonly id: string
+  readonly model: string
+  readonly content: string
+}
+
+export interface TutorStreamError {
+  readonly type: 'error'
+  readonly code: string
+  readonly message: string
+}
+
+export type TutorStreamEvent = TutorStreamTextDelta | TutorStreamMessageComplete | TutorStreamError
+
