@@ -87,6 +87,13 @@ export interface ConceptExplainerAsset {
   readonly title: string | null
 }
 
+// --- Stuck Detection Config ---
+
+export interface StuckDetectionConfig {
+  readonly thresholdMinutes: number
+  readonly stage2OffsetSeconds: number
+}
+
 // --- API Response Types ---
 
 export interface MilestoneContent {
@@ -101,6 +108,7 @@ export interface MilestoneContent {
   readonly conceptExplainerAssets: readonly ConceptExplainerAsset[]
   readonly starterCode: string | null
   readonly csConceptLabel: string | null
+  readonly stuckDetection: StuckDetectionConfig | null
 }
 
 export interface MilestoneSummary {

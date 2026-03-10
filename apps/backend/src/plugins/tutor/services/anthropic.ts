@@ -35,6 +35,7 @@ export interface AnthropicClient {
 export type TutorContext = {
   readonly userMessage: string
   readonly hasCompileErrors: boolean
+  readonly isStuckIntervention?: boolean
 }
 
 export type TutorRequestParams = {
@@ -51,6 +52,7 @@ const SONNET_MODEL: TutorModel = 'claude-sonnet-4-6-20250514'
 const EXPLAIN_PATTERNS = /\b(explain|what is|how does|why does|what happens|how would)\b/i
 
 export function selectModel(context: TutorContext): TutorModel {
+  if (context.isStuckIntervention) return SONNET_MODEL
   if (context.hasCompileErrors) return SONNET_MODEL
   if (EXPLAIN_PATTERNS.test(context.userMessage)) return SONNET_MODEL
   return HAIKU_MODEL

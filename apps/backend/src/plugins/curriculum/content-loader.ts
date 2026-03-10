@@ -22,8 +22,14 @@ export interface ContentLoaderOptions {
   readonly log?: ContentLoaderLogger
 }
 
+export interface StuckDetectionMetadata {
+  readonly thresholdMinutes: number
+  readonly stage2OffsetSeconds: number
+}
+
 export interface MilestoneMetadata {
   readonly csConceptLabel: string | null
+  readonly stuckDetection: StuckDetectionMetadata | null
 }
 
 export interface ContentLoader {
@@ -60,7 +66,7 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
     metadata: MilestoneMetadata
   }
 
-  const emptyMetadata: MilestoneMetadata = { csConceptLabel: null }
+  const emptyMetadata: MilestoneMetadata = { csConceptLabel: null, stuckDetection: null }
 
   const emptyCachedContent: CachedMilestoneContent = {
     brief: null,
@@ -228,9 +234,20 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
   async function readMetadata(slug: string): Promise<MilestoneMetadata> {
     try {
       const raw = await readFile(join(milestoneDir(slug), 'metadata.yaml'), 'utf-8')
-      const parsed = yaml.load(raw) as { csConceptLabel?: string } | null
+      const parsed = yaml.load(raw) as {
+        csConceptLabel?: string
+        stuckDetection?: { thresholdMinutes?: number; stage2OffsetSeconds?: number }
+      } | null
+
+      const stuckRaw = parsed?.stuckDetection
+      const stuckDetection: StuckDetectionMetadata | null =
+        stuckRaw && typeof stuckRaw.thresholdMinutes === 'number' && typeof stuckRaw.stage2OffsetSeconds === 'number'
+          ? { thresholdMinutes: stuckRaw.thresholdMinutes, stage2OffsetSeconds: stuckRaw.stage2OffsetSeconds }
+          : null
+
       return {
         csConceptLabel: parsed?.csConceptLabel ?? null,
+        stuckDetection,
       }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {

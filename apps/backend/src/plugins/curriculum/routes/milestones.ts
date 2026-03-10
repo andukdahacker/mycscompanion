@@ -48,6 +48,7 @@ export async function milestoneRoutes(fastify: FastifyInstance, opts: MilestoneR
       conceptExplainerAssets,
       starterCode,
       csConceptLabel: metadata.csConceptLabel,
+      stuckDetection: metadata.stuckDetection,
     }
   })
 }

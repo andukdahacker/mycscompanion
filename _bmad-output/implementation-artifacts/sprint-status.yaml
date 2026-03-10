@@ -112,7 +112,7 @@ development_status:
   6-1-tutor-backend-and-anthropic-sdk-integration: done
   6-2-tutor-sse-streaming-and-conversation-persistence: done
   6-3-tutor-chat-ui-and-panel-integration: done
-  6-4-two-stage-stuck-detection-and-proactive-intervention: backlog
+  6-4-two-stage-stuck-detection-and-proactive-intervention: done
   6-5-tutor-surfaced-concept-explainers: backlog
   6-6-graceful-degradation-and-availability: backlog
   epic-6-retrospective: optional

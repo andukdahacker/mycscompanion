@@ -672,6 +672,58 @@ describe('ContentLoader', () => {
         'Failed to read milestone metadata'
       )
     })
+
+    it('should parse stuckDetection from metadata.yaml', async () => {
+      const metadataYaml = `csConceptLabel: "Systems Programming"
+stuckDetection:
+  thresholdMinutes: 10
+  stage2OffsetSeconds: 45
+`
+      setupFs(
+        {
+          [`${CONTENT_ROOT}/01-kv-store/metadata.yaml`]: metadataYaml,
+          [`${CONTENT_ROOT}/01-kv-store/brief.md`]: BRIEF_CONTENT,
+          [`${CONTENT_ROOT}/01-kv-store/acceptance-criteria.yaml`]: ACCEPTANCE_CRITERIA_YAML,
+          [`${CONTENT_ROOT}/01-kv-store/benchmark-config.yaml`]: BENCHMARK_CONFIG_YAML,
+        },
+        {
+          [`${CONTENT_ROOT}/01-kv-store/assets`]: ['.gitkeep'],
+          [`${CONTENT_ROOT}/01-kv-store/starter-code`]: ['.gitkeep'],
+        }
+      )
+
+      const metadata = await loader.loadMetadata('01-kv-store')
+      expect(metadata.stuckDetection).toEqual({
+        thresholdMinutes: 10,
+        stage2OffsetSeconds: 45,
+      })
+    })
+
+    it('should return null stuckDetection when field is missing from metadata.yaml', async () => {
+      const metadataYaml = 'csConceptLabel: "Systems Programming"\n'
+      setupFs(
+        {
+          [`${CONTENT_ROOT}/01-kv-store/metadata.yaml`]: metadataYaml,
+          [`${CONTENT_ROOT}/01-kv-store/brief.md`]: BRIEF_CONTENT,
+          [`${CONTENT_ROOT}/01-kv-store/acceptance-criteria.yaml`]: ACCEPTANCE_CRITERIA_YAML,
+          [`${CONTENT_ROOT}/01-kv-store/benchmark-config.yaml`]: BENCHMARK_CONFIG_YAML,
+        },
+        {
+          [`${CONTENT_ROOT}/01-kv-store/assets`]: ['.gitkeep'],
+          [`${CONTENT_ROOT}/01-kv-store/starter-code`]: ['.gitkeep'],
+        }
+      )
+
+      const metadata = await loader.loadMetadata('01-kv-store')
+      expect(metadata.stuckDetection).toBeNull()
+    })
+
+    it('should return null stuckDetection when metadata.yaml is missing', async () => {
+      setupFs({})
+
+      const metadata = await loader.loadMetadata('nonexistent')
+      expect(metadata.stuckDetection).toBeNull()
+    })
   })
 
   describe('slug validation', () => {

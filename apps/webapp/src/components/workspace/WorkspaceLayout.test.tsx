@@ -339,6 +339,52 @@ describe('WorkspaceLayout', () => {
     })
   })
 
+  describe('stuck stage 1 indicator on collapsed tutor button', () => {
+    it('should have green glow classes when isStage1=true and tutor is collapsed', () => {
+      useWorkspaceUIStore.setState({ tutorExpanded: false })
+
+      render(<WorkspaceLayout {...defaultProps} isStage1={true} />)
+
+      const tutorPanel = screen.getByTestId('tutor-panel')
+      const button = tutorPanel.querySelector('button')
+      expect(button).toBeInTheDocument()
+      expect(button?.className).toContain('animate-pulse')
+      expect(button?.className).toContain('bg-primary/10')
+      expect(button?.className).toContain('text-primary')
+    })
+
+    it('should have default classes when isStage1=false and tutor is collapsed', () => {
+      useWorkspaceUIStore.setState({ tutorExpanded: false })
+
+      render(<WorkspaceLayout {...defaultProps} isStage1={false} />)
+
+      const tutorPanel = screen.getByTestId('tutor-panel')
+      const button = tutorPanel.querySelector('button')
+      expect(button).toBeInTheDocument()
+      expect(button?.className).toContain('text-muted-foreground')
+      expect(button?.className).not.toContain('animate-pulse')
+    })
+
+    it('should have motion-reduce:animate-none class for green glow', () => {
+      useWorkspaceUIStore.setState({ tutorExpanded: false })
+
+      render(<WorkspaceLayout {...defaultProps} isStage1={true} />)
+
+      const tutorPanel = screen.getByTestId('tutor-panel')
+      const button = tutorPanel.querySelector('button')
+      expect(button?.className).toContain('motion-reduce:animate-none')
+    })
+
+    it('should have updated aria-label when isStage1=true', () => {
+      useWorkspaceUIStore.setState({ tutorExpanded: false })
+
+      render(<WorkspaceLayout {...defaultProps} isStage1={true} />)
+
+      const button = screen.getByRole('button', { name: /tutor wants to help/i })
+      expect(button).toBeInTheDocument()
+    })
+  })
+
   describe('tutor unavailable state', () => {
     it('should show unavailable message when tutorAvailable is false', () => {
       useWorkspaceUIStore.setState({ tutorAvailable: false })

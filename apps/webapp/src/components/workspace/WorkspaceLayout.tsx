@@ -7,6 +7,7 @@ import {
 } from '@mycscompanion/ui/src/components/ui/resizable'
 import type { PanelSize } from '@mycscompanion/ui/src/components/ui/resizable'
 import { MessageCircle } from 'lucide-react'
+import { cn } from '@mycscompanion/ui/src/lib/utils'
 import type { AcceptanceCriterion, ConceptExplainerAsset, CriterionResult } from '@mycscompanion/shared'
 import { WorkspaceTopBar } from './WorkspaceTopBar'
 import { CodeEditor } from './CodeEditor'
@@ -32,6 +33,9 @@ interface WorkspaceLayoutProps {
   readonly onCompleteMilestone?: () => void
   readonly conceptExplainerAssets: readonly ConceptExplainerAsset[]
   readonly sessionId: string | null
+  readonly isStage1?: boolean
+  readonly interventionStreamingContent?: string
+  readonly isInterventionStreaming?: boolean
 }
 
 function WorkspaceLayout({
@@ -51,6 +55,9 @@ function WorkspaceLayout({
   onCompleteMilestone,
   conceptExplainerAssets,
   sessionId,
+  isStage1,
+  interventionStreamingContent,
+  isInterventionStreaming,
 }: WorkspaceLayoutProps): React.ReactElement {
   const breakpointMode = useWorkspaceUIStore((s) => s.breakpointMode)
   const setBreakpointMode = useWorkspaceUIStore((s) => s.setBreakpointMode)
@@ -152,6 +159,21 @@ function WorkspaceLayout({
             </ResizablePanel>
           </ResizablePanelGroup>
 
+          {/* Stage 1 floating indicator — small desktop only */}
+          {isStage1 && !tutorExpanded && (
+            <button
+              data-testid="stuck-indicator"
+              className={cn(
+                'fixed bottom-4 right-4 z-30 flex size-10 items-center justify-center rounded-full shadow-lg',
+                'animate-pulse bg-primary/10 text-primary motion-reduce:animate-none'
+              )}
+              onClick={() => setTutorExpanded(true)}
+              aria-label="Expand tutor panel - tutor wants to help"
+            >
+              <MessageCircle className="size-5" />
+            </button>
+          )}
+
           {/* Tutor overlay */}
           {tutorExpanded && (
             <>
@@ -164,7 +186,7 @@ function WorkspaceLayout({
                 data-testid="tutor-overlay"
                 className="fixed right-0 top-12 z-40 flex h-[calc(100vh-48px)] w-[300px] flex-col border-l bg-background shadow-lg"
               >
-                <TutorPanel sessionId={sessionId} />
+                <TutorPanel sessionId={sessionId} interventionStreamingContent={interventionStreamingContent} isInterventionStreaming={isInterventionStreaming} />
               </div>
             </>
           )}
@@ -212,12 +234,17 @@ function WorkspaceLayout({
         >
           <div data-testid="tutor-panel" className="flex h-full flex-col">
             {tutorExpanded ? (
-              <TutorPanel sessionId={sessionId} />
+              <TutorPanel sessionId={sessionId} interventionStreamingContent={interventionStreamingContent} isInterventionStreaming={isInterventionStreaming} />
             ) : (
               <button
-                className="flex h-full w-full items-center justify-center text-muted-foreground hover:text-foreground"
+                className={cn(
+                  'flex h-full w-full items-center justify-center hover:text-foreground',
+                  isStage1
+                    ? 'animate-pulse bg-primary/10 text-primary motion-reduce:animate-none'
+                    : 'text-muted-foreground'
+                )}
                 onClick={() => setTutorExpanded(true)}
-                aria-label="Expand tutor panel"
+                aria-label={isStage1 ? 'Expand tutor panel - tutor wants to help' : 'Expand tutor panel'}
               >
                 <MessageCircle className="size-4" />
               </button>

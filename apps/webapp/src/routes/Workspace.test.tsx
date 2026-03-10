@@ -111,8 +111,19 @@ vi.mock('../hooks/use-submit-code', () => ({
 
 // Mock useStuckDetection
 const mockResetTimer = vi.fn()
+let mockStuckDetectionReturn = { isStage1: false, isStage2: false, resetTimer: mockResetTimer, stage1Timestamp: null as number | null, stage2Timestamp: null as number | null }
 vi.mock('../hooks/use-stuck-detection', () => ({
-  useStuckDetection: () => ({ isStage1: false, isStage2: false, resetTimer: mockResetTimer, stage1Timestamp: null, stage2Timestamp: null }),
+  useStuckDetection: () => mockStuckDetectionReturn,
+}))
+
+// Mock useStuckIntervention
+const mockTriggerIntervention = vi.fn()
+vi.mock('../hooks/use-stuck-intervention', () => ({
+  useStuckIntervention: () => ({
+    triggerIntervention: mockTriggerIntervention,
+    isInterventionStreaming: false,
+    interventionStreamingContent: '',
+  }),
 }))
 
 // Mock useAutoSave
@@ -174,7 +185,9 @@ describe('Workspace', () => {
       criteriaResults: null,
       allCriteriaMet: false,
     })
+    mockStuckDetectionReturn = { isStage1: false, isStage2: false, resetTimer: mockResetTimer, stage1Timestamp: null, stage2Timestamp: null }
     mockResetTimer.mockClear()
+    mockTriggerIntervention.mockClear()
     mockScheduleAutoSave.mockClear()
     mockSaveImmediately.mockClear()
     mockSessionMutate.mockClear()
@@ -729,6 +742,50 @@ describe('Workspace', () => {
       unmount()
 
       expect(mockEndSession).toHaveBeenCalledWith('unmount-session-id')
+    })
+  })
+
+  describe('stuck detection stage 2 behaviour', () => {
+    it('should auto-expand tutor panel when stage 2 triggers', () => {
+      useWorkspaceUIStore.setState({ tutorExpanded: false, tutorAvailable: true })
+      mockStuckDetectionReturn = { isStage1: true, isStage2: true, resetTimer: mockResetTimer, stage1Timestamp: Date.now() - 60_000, stage2Timestamp: Date.now() }
+
+      renderWorkspace()
+
+      expect(useWorkspaceUIStore.getState().tutorExpanded).toBe(true)
+    })
+
+    it('should suppress stage 2 auto-expand when tutorAvailable is false', () => {
+      useWorkspaceUIStore.setState({ tutorExpanded: false, tutorAvailable: false })
+      mockStuckDetectionReturn = { isStage1: true, isStage2: true, resetTimer: mockResetTimer, stage1Timestamp: Date.now() - 60_000, stage2Timestamp: Date.now() }
+
+      renderWorkspace()
+
+      expect(useWorkspaceUIStore.getState().tutorExpanded).toBe(false)
+    })
+
+    it('should reset stuck detection when tutor panel collapses', async () => {
+      mockStuckDetectionReturn = { isStage1: true, isStage2: false, resetTimer: mockResetTimer, stage1Timestamp: Date.now(), stage2Timestamp: null }
+      useWorkspaceUIStore.setState({ tutorExpanded: true, tutorAvailable: true })
+
+      renderWorkspace()
+      mockResetTimer.mockClear()
+
+      // Collapse the tutor panel
+      await act(async () => {
+        useWorkspaceUIStore.setState({ tutorExpanded: false })
+      })
+
+      expect(mockResetTimer).toHaveBeenCalled()
+    })
+
+    it('should trigger stuck intervention on stage 2', () => {
+      useWorkspaceUIStore.setState({ tutorExpanded: false, tutorAvailable: true })
+      mockStuckDetectionReturn = { isStage1: true, isStage2: true, resetTimer: mockResetTimer, stage1Timestamp: Date.now() - 600_000, stage2Timestamp: Date.now() }
+
+      renderWorkspace()
+
+      expect(mockTriggerIntervention).toHaveBeenCalledWith(expect.any(Number))
     })
   })
 })

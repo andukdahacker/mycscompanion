@@ -1,4 +1,4 @@
-csConceptLabel: "Systems Programming & I/O"
+csConceptLabel: null
 stuckDetection:
   thresholdMinutes: 10
   stage2OffsetSeconds: 60

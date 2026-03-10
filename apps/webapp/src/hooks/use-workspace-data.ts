@@ -1,11 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import type { MilestoneContent, AcceptanceCriterion, ConceptExplainerAsset, ResumeData, CriterionResult } from '@mycscompanion/shared'
+import type { MilestoneContent, AcceptanceCriterion, ConceptExplainerAsset, ResumeData, CriterionResult, StuckDetectionConfig } from '@mycscompanion/shared'
 import { apiFetch } from '../lib/api-fetch'
-
-interface StuckDetectionConfig {
-  readonly thresholdMinutes: number
-  readonly stage2OffsetSeconds: number
-}
 
 interface WorkspaceData {
   readonly milestoneName: string
@@ -52,7 +47,7 @@ function useWorkspaceData(milestoneId: string | undefined) {
         initialContent,
         brief: content.brief,
         criteria: content.acceptanceCriteria,
-        stuckDetection: { thresholdMinutes: 10, stage2OffsetSeconds: 60 }, // Hardcoded until Epic 6
+        stuckDetection: content.stuckDetection ?? { thresholdMinutes: 10, stage2OffsetSeconds: 60 },
         conceptExplainerAssets: content.conceptExplainerAssets,
         restoredCriteria: resumeData.lastSubmissionCriteria,
         restoredSubmissionId: resumeData.lastSubmissionId,
@@ -64,4 +59,4 @@ function useWorkspaceData(milestoneId: string | undefined) {
 }
 
 export { useWorkspaceData }
-export type { WorkspaceData, StuckDetectionConfig }
+export type { WorkspaceData }

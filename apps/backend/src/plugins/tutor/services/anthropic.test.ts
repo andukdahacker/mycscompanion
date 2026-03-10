@@ -89,6 +89,16 @@ describe('selectModel', () => {
     const context: TutorContext = { userMessage: 'explain this error', hasCompileErrors: true }
     expect(selectModel(context)).toBe('claude-sonnet-4-6-20250514')
   })
+
+  it('should return Sonnet when isStuckIntervention is true', () => {
+    const context: TutorContext = { userMessage: 'some message', hasCompileErrors: false, isStuckIntervention: true }
+    expect(selectModel(context)).toBe('claude-sonnet-4-6-20250514')
+  })
+
+  it('should return Haiku for default when isStuckIntervention is undefined', () => {
+    const context: TutorContext = { userMessage: 'some message', hasCompileErrors: false }
+    expect(selectModel(context)).toBe('claude-haiku-4-5-20251001')
+  })
 })
 
 describe('createAnthropicService', () => {

@@ -26,6 +26,7 @@ const MOCK_MILESTONE_CONTENT: MilestoneContent = {
   conceptExplainerAssets: [],
   starterCode: 'package main\n\nfunc main() {}\n',
   csConceptLabel: null,
+  stuckDetection: { thresholdMinutes: 10, stage2OffsetSeconds: 60 },
 }
 
 const MOCK_RESUME_EMPTY: ResumeData = {
@@ -276,5 +277,35 @@ describe('useWorkspaceData', () => {
     })
 
     expect(typeof result.current.refetch).toBe('function')
+  })
+
+  it('should use API-provided stuckDetection config when available', async () => {
+    setupMock({ stuckDetection: { thresholdMinutes: 15, stage2OffsetSeconds: 90 } })
+    const { useWorkspaceData } = await import('./use-workspace-data')
+    const { result } = renderHook(() => useWorkspaceData('milestone-1'), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.data).toBeDefined()
+    })
+
+    expect(result.current.data?.stuckDetection).toEqual({
+      thresholdMinutes: 15,
+      stage2OffsetSeconds: 90,
+    })
+  })
+
+  it('should fall back to default stuckDetection when API returns null', async () => {
+    setupMock({ stuckDetection: null })
+    const { useWorkspaceData } = await import('./use-workspace-data')
+    const { result } = renderHook(() => useWorkspaceData('milestone-1'), { wrapper })
+
+    await waitFor(() => {
+      expect(result.current.data).toBeDefined()
+    })
+
+    expect(result.current.data?.stuckDetection).toEqual({
+      thresholdMinutes: 10,
+      stage2OffsetSeconds: 60,
+    })
   })
 })

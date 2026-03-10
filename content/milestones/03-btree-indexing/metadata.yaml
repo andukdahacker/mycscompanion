@@ -1,0 +1,4 @@
+csConceptLabel: null
+stuckDetection:
+  thresholdMinutes: 7
+  stage2OffsetSeconds: 60

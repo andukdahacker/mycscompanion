@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { StuckDetectionConfig } from './use-workspace-data'
+import type { StuckDetectionConfig } from '@mycscompanion/shared'
 
 interface UseStuckDetectionResult {
   readonly isStage1: boolean

@@ -6,11 +6,14 @@ import { db as defaultDb } from '../../shared/db.js'
 import type { RateLimitChecker } from '../../shared/rate-limiter.js'
 import type { AnthropicService, AnthropicClient } from './services/anthropic.js'
 import type { ContextAssembler } from './services/context-assembler.js'
+import type { StuckContextAssembler } from './services/stuck-context-assembler.js'
 import { createAnthropicService } from './services/anthropic.js'
 import { createContextAssembler } from './services/context-assembler.js'
+import { createStuckContextAssembler } from './services/stuck-context-assembler.js'
 import { messageRoutes } from './routes/message.js'
 import { historyRoutes } from './routes/history.js'
 import { streamRoutes } from './routes/stream.js'
+import { stuckInterventionRoutes } from './routes/stuck-intervention.js'
 
 export interface TutorPluginOptions {
   readonly db?: Kysely<DB>
@@ -18,9 +21,11 @@ export interface TutorPluginOptions {
   readonly rateLimiter: RateLimitChecker
   readonly anthropicClient?: AnthropicClient
   readonly contentRoot?: string
+  readonly promptsRoot?: string
   // Pre-built services (for testing)
   readonly anthropicService?: AnthropicService
   readonly contextAssembler?: ContextAssembler
+  readonly stuckContextAssembler?: StuckContextAssembler
 }
 
 const unavailableService: AnthropicService = {
@@ -44,6 +49,8 @@ export async function tutorPlugin(
     (opts.anthropicClient ? createAnthropicService(opts.anthropicClient) : unavailableService)
 
   let contextAssembler: ContextAssembler
+  let stuckContextAssembler: StuckContextAssembler | null = null
+
   if (opts.contextAssembler) {
     contextAssembler = opts.contextAssembler
   } else {
@@ -54,6 +61,18 @@ export async function tutorPlugin(
       db,
       redis: opts.redis,
       contentRoot: opts.contentRoot,
+      promptsRoot: opts.promptsRoot,
+    })
+  }
+
+  if (opts.stuckContextAssembler) {
+    stuckContextAssembler = opts.stuckContextAssembler
+  } else if (opts.redis) {
+    stuckContextAssembler = createStuckContextAssembler({
+      db,
+      redis: opts.redis,
+      contentRoot: opts.contentRoot,
+      promptsRoot: opts.promptsRoot,
     })
   }
 
@@ -72,4 +91,14 @@ export async function tutorPlugin(
     contextAssembler,
     rateLimiter: opts.rateLimiter,
   })
+
+  if (stuckContextAssembler !== null) {
+    const assembler = stuckContextAssembler
+    await fastify.register(stuckInterventionRoutes, {
+      db,
+      anthropicService,
+      stuckContextAssembler: assembler,
+      rateLimiter: opts.rateLimiter,
+    })
+  }
 }

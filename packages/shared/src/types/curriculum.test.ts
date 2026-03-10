@@ -208,6 +208,7 @@ describe('Curriculum types', () => {
       conceptExplainerAssets: [],
       starterCode: 'content/milestones/01-kv-store/starter-code/',
       csConceptLabel: 'Systems Programming & I/O',
+      stuckDetection: { thresholdMinutes: 10, stage2OffsetSeconds: 60 },
     }
     expect(content.slug).toBe('01-kv-store')
   })
@@ -225,6 +226,7 @@ describe('Curriculum types', () => {
       conceptExplainerAssets: [],
       starterCode: null,
       csConceptLabel: null,
+      stuckDetection: null,
     }
     expect(content.benchmarkConfig).toBeNull()
     expect(content.starterCode).toBeNull()

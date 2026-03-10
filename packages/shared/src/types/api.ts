@@ -144,6 +144,12 @@ export interface TutorConversationMessage {
   readonly createdAt: string
 }
 
+// --- Stuck Intervention ---
+
+export interface StuckInterventionRequest {
+  readonly timeStuckMinutes: number
+}
+
 // --- Tutor SSE Streaming Events ---
 
 export interface TutorStreamTextDelta {

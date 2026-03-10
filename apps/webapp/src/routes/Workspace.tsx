@@ -10,6 +10,7 @@ import { useWorkspaceData } from '../hooks/use-workspace-data'
 import { useSubmitCode } from '../hooks/use-submit-code'
 import { useStuckDetection } from '../hooks/use-stuck-detection'
 import { useAutoSave } from '../hooks/use-auto-save'
+import { useStuckIntervention } from '../hooks/use-stuck-intervention'
 import { useSession } from '../hooks/use-session'
 import { apiFetch } from '../lib/api-fetch'
 import { endSession } from '../lib/end-session'
@@ -26,7 +27,7 @@ function Workspace(): React.ReactElement | null {
   const { submit, submissionId, isRunning, outputLines, criteriaResults, allCriteriaMet } = useSubmitCode()
 
   const stuckDetectionConfig = data?.stuckDetection ?? { thresholdMinutes: 10, stage2OffsetSeconds: 60 }
-  const { resetTimer } = useStuckDetection(stuckDetectionConfig)
+  const { resetTimer, isStage1, isStage2, stage1Timestamp } = useStuckDetection(stuckDetectionConfig)
 
   const { scheduleAutoSave, saveImmediately } = useAutoSave({
     milestoneId: milestoneId ?? '',
@@ -80,6 +81,37 @@ function Workspace(): React.ReactElement | null {
       endSession(sessionIdRef.current)
     }
   }, [])
+
+  // Stuck intervention hook
+  const { triggerIntervention, isInterventionStreaming, interventionStreamingContent } = useStuckIntervention(sessionId)
+
+  // Stage 2 auto-expand: expand tutor panel when Stage 2 triggers (AC: #2, #7)
+  const tutorAvailable = useWorkspaceUIStore((s) => s.tutorAvailable)
+  const setTutorExpanded = useWorkspaceUIStore((s) => s.setTutorExpanded)
+  const tutorExpanded = useWorkspaceUIStore((s) => s.tutorExpanded)
+
+  const stage2TriggeredRef = useRef(false)
+
+  useEffect(() => {
+    if (isStage2 && tutorAvailable && !stage2TriggeredRef.current) {
+      stage2TriggeredRef.current = true
+      setTutorExpanded(true)
+
+      const minutesStuck = stage1Timestamp
+        ? Math.round((Date.now() - stage1Timestamp) / 60_000) + stuckDetectionConfig.thresholdMinutes
+        : stuckDetectionConfig.thresholdMinutes
+
+      triggerIntervention(minutesStuck)
+    }
+  }, [isStage2, tutorAvailable, setTutorExpanded, triggerIntervention, stage1Timestamp, stuckDetectionConfig.thresholdMinutes])
+
+  // Reset stuck detection on tutor dismiss (AC: #5)
+  useEffect(() => {
+    if (!tutorExpanded && (isStage1 || isStage2)) {
+      stage2TriggeredRef.current = false
+      resetTimer()
+    }
+  }, [tutorExpanded, isStage1, isStage2, resetTimer])
 
   const handleRun = useCallback(() => {
     if (!milestoneId) return
@@ -179,6 +211,9 @@ function Workspace(): React.ReactElement | null {
       onCompleteMilestone={handleCompleteMilestone}
       conceptExplainerAssets={data.conceptExplainerAssets}
       sessionId={sessionId}
+      isStage1={isStage1}
+      interventionStreamingContent={interventionStreamingContent}
+      isInterventionStreaming={isInterventionStreaming}
     />
   )
 }

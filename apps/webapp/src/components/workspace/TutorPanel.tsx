@@ -11,9 +11,11 @@ import { TutorInput } from './TutorInput'
 interface TutorPanelProps {
   readonly sessionId: string | null
   readonly readOnly?: boolean
+  readonly interventionStreamingContent?: string
+  readonly isInterventionStreaming?: boolean
 }
 
-function TutorPanel({ sessionId, readOnly = false }: TutorPanelProps): React.ReactElement {
+function TutorPanel({ sessionId, readOnly = false, interventionStreamingContent, isInterventionStreaming }: TutorPanelProps): React.ReactElement {
   const tutorAvailable = useWorkspaceUIStore((s) => s.tutorAvailable)
   const tutorExpanded = useWorkspaceUIStore((s) => s.tutorExpanded)
   const setTutorAvailable = useWorkspaceUIStore((s) => s.setTutorAvailable)
@@ -24,7 +26,7 @@ function TutorPanel({ sessionId, readOnly = false }: TutorPanelProps): React.Rea
 
   const { sendMessage, isStreaming, streamingContent, error, clearError } = useTutorStream(sessionId)
 
-  const scrollRef = useAutoScroll([messages, streamingContent])
+  const scrollRef = useAutoScroll([messages, streamingContent, interventionStreamingContent])
 
   const handleSend = useCallback(
     (message: string) => {
@@ -96,20 +98,27 @@ function TutorPanel({ sessionId, readOnly = false }: TutorPanelProps): React.Rea
           <TutorMessage key={msg.id} message={msg} />
         ))}
 
-        {isStreaming && streamingContent && (
+        {/* Intervention streaming takes priority over regular streaming */}
+        {isInterventionStreaming && interventionStreamingContent ? (
+          <TutorMessage
+            message={{ id: 'intervention-streaming', role: 'assistant', content: '', model: null, createdAt: new Date().toISOString() }}
+            isStreaming
+            streamingContent={interventionStreamingContent}
+          />
+        ) : isStreaming && streamingContent ? (
           <TutorMessage
             message={{ id: 'streaming', role: 'assistant', content: '', model: null, createdAt: new Date().toISOString() }}
             isStreaming
             streamingContent={streamingContent}
           />
-        )}
+        ) : null}
       </div>
 
       {/* Input area — hidden in read-only mode */}
       {!readOnly && (
         <TutorInput
           onSend={handleSend}
-          isStreaming={isStreaming}
+          isStreaming={isStreaming || !!isInterventionStreaming}
           error={error}
           onClearError={clearError}
         />
