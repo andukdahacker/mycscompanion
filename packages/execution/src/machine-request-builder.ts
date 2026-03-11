@@ -4,10 +4,16 @@ import type { FlyMachineConfig } from './index.js'
 /** Maximum user code size in bytes (64 KB). Validated before base64 encoding. */
 export const MAX_CODE_SIZE_BYTES = 64 * 1024
 
+export interface ReferenceFile {
+  readonly filename: string
+  readonly content: string
+}
+
 export interface BuildMachineRequestOptions {
   readonly submissionId: string
   readonly milestoneId: string
   readonly region?: string
+  readonly referenceFiles?: readonly ReferenceFile[]
 }
 
 /** Builds a FlyCreateMachineRequest from internal config + user code.
@@ -26,6 +32,22 @@ export function buildMachineRequest(
 
   const encodedCode = Buffer.from(code, 'utf-8').toString('base64')
   const region = options.region ?? config.region
+
+  const files: Array<{ guest_path: string; raw_value: string }> = [
+    {
+      guest_path: '/workspace/main.go',
+      raw_value: encodedCode,
+    },
+  ]
+
+  if (options.referenceFiles) {
+    for (const ref of options.referenceFiles) {
+      files.push({
+        guest_path: `/reference/${ref.filename}`,
+        raw_value: Buffer.from(ref.content, 'utf-8').toString('base64'),
+      })
+    }
+  }
 
   return {
     ...(region !== undefined ? { region } : {}),
@@ -48,12 +70,7 @@ export function buildMachineRequest(
         policy: config.restartPolicy,
       },
       services: [],
-      files: [
-        {
-          guest_path: '/workspace/main.go',
-          raw_value: encodedCode,
-        },
-      ],
+      files,
       metadata: {
         submission_id: options.submissionId,
         milestone_id: options.milestoneId,

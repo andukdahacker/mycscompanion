@@ -1,18 +1,45 @@
+import { readFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import type { Kysely } from 'kysely'
 import type { Logger } from 'pino'
 import type { DB } from '@mycscompanion/shared'
 import type { FlyMachineConfig } from '@mycscompanion/execution'
-import { type FlyClient, FlyApiError, buildMachineRequest } from '@mycscompanion/execution'
+import {
+  type FlyClient,
+  FlyApiError,
+  buildMachineRequest,
+  parseBenchmarkOutput,
+  classifyBenchmarkError,
+} from '@mycscompanion/execution'
+import type { BenchmarkRunResult } from '@mycscompanion/execution'
 import type { EventPublisher } from '../../shared/event-publisher.js'
 import type { ExecutionJobData } from '../../shared/queue.js'
 import type { ExecutionResult } from '../../shared/execution-types.js'
 import type { ContentLoader } from '../../plugins/curriculum/content-loader.js'
 import { evaluateCriteria, evaluateAllNotMet } from '../../shared/criteria-evaluator.js'
+import { persistBenchmarkResult } from '../../shared/benchmark-persistence.js'
 
 /** Narrow job interface — only properties actually used by the processor */
 export interface ExecutionJob {
   readonly data: ExecutionJobData
 }
+
+/** Signature for the benchmark execution function — injectable for testing */
+export type RunBenchmarkFn = (opts: {
+  readonly flyClient: FlyClient
+  readonly flyConfig: FlyMachineConfig
+  readonly flyApiToken: string
+  readonly flyAppName: string
+  readonly code: string
+  readonly submissionId: string
+  readonly milestoneId: string
+  readonly referenceMainGo: string
+  readonly referenceGoMod: string
+  readonly benchmark: { readonly name: string; readonly workload?: { readonly type?: string; readonly numOperations?: number; readonly keySizeBytes?: number; readonly valueSizeBytes?: number } }
+  readonly warmup: number
+  readonly iterations: number
+  readonly logger: Logger
+}) => Promise<string>
 
 export interface ExecutionProcessorDeps {
   readonly flyClient: FlyClient
@@ -23,6 +50,7 @@ export interface ExecutionProcessorDeps {
   readonly flyApiToken: string
   readonly flyAppName: string
   readonly contentLoader: ContentLoader
+  readonly runBenchmark?: RunBenchmarkFn
 }
 
 const MAX_OUTPUT_BYTES = 65536
@@ -101,31 +129,58 @@ function truncateOutput(lines: string[], maxBytes: number): string[] {
   return result
 }
 
+/**
+ * Attempts to run a benchmark on the same Fly Machine.
+ * Returns the stdout for parseBenchmarkOutput to parse.
+ * Returns empty string if the Go image doesn't support --benchmark yet.
+ */
+async function runBenchmarkOnMachine(opts: {
+  readonly flyClient: FlyClient
+  readonly flyConfig: FlyMachineConfig
+  readonly flyApiToken: string
+  readonly flyAppName: string
+  readonly code: string
+  readonly submissionId: string
+  readonly milestoneId: string
+  readonly referenceMainGo: string
+  readonly referenceGoMod: string
+  readonly benchmark: { readonly name: string; readonly workload?: { readonly type?: string; readonly numOperations?: number; readonly keySizeBytes?: number; readonly valueSizeBytes?: number } }
+  readonly warmup: number
+  readonly iterations: number
+  readonly logger: Logger
+}): Promise<string> {
+  const { logger } = opts
+  // The Go execution image --benchmark flag is a parallel workstream.
+  // When the image supports it, this function will:
+  // 1. Build a machine request with reference files and --benchmark CLI args
+  // 2. Create the machine and wait for completion
+  // 3. Fetch and return stdout
+  // For now, return empty string — parseBenchmarkOutput handles empty input gracefully.
+  logger.info({ submissionId: opts.submissionId, benchmarkName: opts.benchmark.name }, 'benchmark_execution_skipped_go_image_pending')
+  return ''
+}
+
 export function createExecutionProcessor(
   deps: ExecutionProcessorDeps,
 ): (job: ExecutionJob) => Promise<void> {
   const { flyClient, flyConfig, db, eventPublisher, logger, flyApiToken, flyAppName, contentLoader } = deps
+  const executeBenchmark = deps.runBenchmark ?? runBenchmarkOnMachine
 
   return async (job: ExecutionJob): Promise<void> => {
-    const { submissionId, milestoneId, code } = job.data
+    const { submissionId, milestoneId, code, userId } = job.data
     let machineId: string | undefined
     const startTime = Date.now()
     let sequenceId = 1
 
-    /** Shared helper: look up milestone slug → load criteria → evaluate → publish SSE → return JSON string */
+    /** Shared helper: load criteria by slug → evaluate → publish SSE → return JSON string */
     async function evaluateAndPublishCriteria(
+      slug: string | null,
       evaluateFn: (criteria: ReadonlyArray<import('@mycscompanion/shared').AcceptanceCriterion>) => ReadonlyArray<import('@mycscompanion/shared').CriterionResult>,
     ): Promise<string | null> {
       try {
-        const milestone = await db
-          .selectFrom('milestones')
-          .select('slug')
-          .where('id', '=', milestoneId)
-          .executeTakeFirst()
+        if (!slug) return null
 
-        if (!milestone) return null
-
-        const criteria = await contentLoader.loadAcceptanceCriteria(milestone.slug)
+        const criteria = await contentLoader.loadAcceptanceCriteria(slug)
         if (criteria.length === 0) return null
 
         const criteriaResults = evaluateFn(criteria)
@@ -237,11 +292,105 @@ export function createExecutionProcessor(
         compilationSucceeded: analysis.compilationSucceeded,
       }
 
-      // Evaluate acceptance criteria
-      const criteriaResultsJson = await evaluateAndPublishCriteria((criteria) =>
+      // Look up milestone slug once — used for benchmark + criteria phases
+      let milestoneSlug: string | null = null
+      try {
+        const milestone = await db
+          .selectFrom('milestones')
+          .select('slug')
+          .where('id', '=', milestoneId)
+          .executeTakeFirst()
+        milestoneSlug = milestone?.slug ?? null
+      } catch {
+        // milestone lookup failed — skip benchmark and criteria phases that need slug
+      }
+
+      // Benchmark phase — only for successful executions with benchmark config
+      let benchmarkRunResult: BenchmarkRunResult | null = null
+      if (!analysis.isUserError && milestoneSlug) {
+        try {
+          const benchmarkConfig = await contentLoader.loadBenchmarkConfig(milestoneSlug)
+          if (benchmarkConfig && benchmarkConfig.benchmarks.length > 0) {
+            // Load reference implementation files
+            const contentBase = resolve(process.cwd(), '..', '..', 'content', 'milestones', milestoneSlug, 'reference-impl')
+            let referenceMainGo: string | null = null
+            let referenceGoMod: string | null = null
+            try {
+              referenceMainGo = await readFile(join(contentBase, 'main.go'), 'utf-8')
+              referenceGoMod = await readFile(join(contentBase, 'go.mod'), 'utf-8')
+            } catch (refErr) {
+              logger.warn({ err: refErr instanceof Error ? refErr : new Error(String(refErr)), milestoneSlug }, 'reference_impl_not_found_skipping_benchmark')
+            }
+
+            if (referenceMainGo && referenceGoMod) {
+              for (const benchmark of benchmarkConfig.benchmarks) {
+                const warmup = benchmark.warmupIterations ?? 2
+                const iterations = benchmark.measuredIterations ?? 10
+                const totalIterations = warmup + iterations
+
+                await eventPublisher.publish(submissionId, {
+                  type: 'benchmark_progress',
+                  phase: 'benchmarking',
+                  iteration: 0,
+                  total: totalIterations,
+                  data: `Starting benchmark: ${benchmark.name}`,
+                  sequenceId: sequenceId++,
+                })
+
+                // Execute benchmark on the same Fly Machine with reference files.
+                // The Go execution image --benchmark flag is a parallel workstream.
+                // When not available, parseBenchmarkOutput returns zeros (empty stdout).
+                const benchmarkStdout = await executeBenchmark({
+                  flyClient, flyConfig, flyApiToken, flyAppName,
+                  code, submissionId, milestoneId,
+                  referenceMainGo, referenceGoMod,
+                  benchmark, warmup, iterations,
+                  logger,
+                })
+
+                const result = parseBenchmarkOutput(benchmarkStdout, benchmark.name)
+                const referenceVersion = benchmark.referenceVersion ?? 'unknown'
+
+                if (result.rawUserTimings.length > 0) {
+                  benchmarkRunResult = result
+
+                  await eventPublisher.publish(submissionId, {
+                    type: 'benchmark_result',
+                    phase: 'benchmarking',
+                    userMedian: result.userMedian,
+                    referenceMedian: result.referenceMedian,
+                    normalizedRatio: result.normalizedRatio,
+                    opsPerSec: result.opsPerSec,
+                    data: '',
+                    sequenceId: sequenceId++,
+                  })
+
+                  await persistBenchmarkResult(db, {
+                    submissionId,
+                    userId,
+                    milestoneId,
+                    benchmarkName: benchmark.name,
+                    result,
+                    referenceVersion,
+                  })
+                } else {
+                  logger.info({ submissionId, benchmarkName: benchmark.name }, 'benchmark_produced_no_results')
+                }
+              }
+            }
+          }
+        } catch (benchErr) {
+          // Benchmark failures should not fail the submission
+          const errType = classifyBenchmarkError(benchErr)
+          logger.warn({ err: benchErr instanceof Error ? benchErr : new Error(String(benchErr)), submissionId, errorType: errType }, 'benchmark_phase_failed')
+        }
+      }
+
+      // Evaluate acceptance criteria (with optional benchmark result)
+      const criteriaResultsJson = await evaluateAndPublishCriteria(milestoneSlug, (criteria) =>
         analysis.isUserError
           ? evaluateAllNotMet(criteria, analysis.compilationSucceeded ? 'Runtime error' : 'Compilation failed')
-          : evaluateCriteria(criteria, executionResult),
+          : evaluateCriteria(criteria, executionResult, benchmarkRunResult),
       )
 
       if (analysis.isUserError) {
@@ -300,8 +449,13 @@ export function createExecutionProcessor(
           }
         }
 
-        // Evaluate criteria as all not-met for timeout
-        const timeoutCriteriaJson = await evaluateAndPublishCriteria((criteria) =>
+        // Evaluate criteria as all not-met for timeout — look up slug since we didn't reach the main path
+        let timeoutSlug: string | null = null
+        try {
+          const ms = await db.selectFrom('milestones').select('slug').where('id', '=', milestoneId).executeTakeFirst()
+          timeoutSlug = ms?.slug ?? null
+        } catch { /* best-effort */ }
+        const timeoutCriteriaJson = await evaluateAndPublishCriteria(timeoutSlug, (criteria) =>
           evaluateAllNotMet(criteria, 'Execution timed out'),
         )
 

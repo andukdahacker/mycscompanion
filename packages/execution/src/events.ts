@@ -33,6 +33,7 @@ export type ExecutionEvent =
       userMedian: number
       referenceMedian: number
       normalizedRatio: number
+      opsPerSec: number
       data: string
       sequenceId: number
     }>

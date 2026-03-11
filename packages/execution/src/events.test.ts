@@ -114,6 +114,7 @@ describe('ExecutionEvent', () => {
         userMedian: 120,
         referenceMedian: 100,
         normalizedRatio: 1.2,
+        opsPerSec: 120,
         data: 'benchmark complete',
         sequenceId: 6,
       }
@@ -121,6 +122,7 @@ describe('ExecutionEvent', () => {
         expect(event.userMedian).toBe(120)
         expect(event.referenceMedian).toBe(100)
         expect(event.normalizedRatio).toBe(1.2)
+        expect(event.opsPerSec).toBe(120)
       }
     })
 

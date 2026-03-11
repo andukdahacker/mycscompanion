@@ -118,8 +118,8 @@ development_status:
   epic-6-retrospective: optional
 
   # Epic 7: Benchmarks & Performance Narrative
-  epic-7: backlog
-  7-1-benchmark-runner-and-reference-normalization: backlog
+  epic-7: in-progress
+  7-1-benchmark-runner-and-reference-normalization: done
   7-2-benchmark-results-display: backlog
   7-3-historical-benchmark-results: backlog
   7-4-benchmark-trajectory-visualization: backlog

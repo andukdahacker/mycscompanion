@@ -1,9 +1,11 @@
 import type { AcceptanceCriterion, CriterionResult } from '@mycscompanion/shared'
+import type { BenchmarkRunResult } from '@mycscompanion/execution'
 import type { ExecutionResult } from './execution-types.js'
 
 function evaluateSingle(
   criterion: AcceptanceCriterion,
   executionResult: ExecutionResult,
+  benchmarkResult?: BenchmarkRunResult | null,
 ): CriterionResult {
   const { assertion } = criterion
   let status: 'met' | 'not-met'
@@ -55,9 +57,10 @@ function evaluateSingle(
       break
     }
     case 'benchmark-threshold': {
-      // TODO(epic-7): Implement benchmark threshold evaluation — extract numeric value from output via regex
-      status = 'not-met'
-      actual = 'Benchmark evaluation not yet supported'
+      const threshold = Number(assertion.expected)
+      const userOpsPerSec = benchmarkResult?.opsPerSec ?? 0
+      status = userOpsPerSec >= threshold ? 'met' : 'not-met'
+      actual = userOpsPerSec > 0 ? `${userOpsPerSec} ops/sec` : 'No benchmark data'
       break
     }
   }
@@ -75,8 +78,9 @@ function evaluateSingle(
 function evaluateCriteria(
   criteria: ReadonlyArray<AcceptanceCriterion>,
   executionResult: ExecutionResult,
+  benchmarkResult?: BenchmarkRunResult | null,
 ): ReadonlyArray<CriterionResult> {
-  return criteria.map((c) => evaluateSingle(c, executionResult))
+  return criteria.map((c) => evaluateSingle(c, executionResult, benchmarkResult))
 }
 
 function evaluateAllNotMet(

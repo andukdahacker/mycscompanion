@@ -8,6 +8,7 @@ import type { EventPublisher } from '../../shared/event-publisher.js'
 import type { ExecutionQueueAdd } from './routes/submit.js'
 import { submitRoutes } from './routes/submit.js'
 import { streamRoutes } from './routes/stream.js'
+import { benchmarkResultsRoutes } from './routes/benchmark-results.js'
 
 export interface ExecutionPluginOptions {
   readonly db?: Kysely<DB>
@@ -31,4 +32,6 @@ export async function executionPlugin(
   })
 
   await fastify.register(streamRoutes, { db, redis: opts.redis })
+
+  await fastify.register(benchmarkResultsRoutes, { db })
 }

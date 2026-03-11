@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AcceptanceCriterion } from '@mycscompanion/shared'
+import type { BenchmarkRunResult } from '@mycscompanion/execution'
 import type { ExecutionResult } from './execution-types.js'
 import { evaluateCriteria, evaluateAllNotMet } from './criteria-evaluator.js'
 
@@ -22,6 +23,21 @@ function makeCriterion(overrides: Partial<AcceptanceCriterion> & Pick<Acceptance
   return {
     name: 'test-criterion',
     order: 1,
+    ...overrides,
+  }
+}
+
+function makeBenchmarkResult(overrides: Partial<BenchmarkRunResult> = {}): BenchmarkRunResult {
+  return {
+    benchmarkName: 'test-benchmark',
+    userMedian: 1000,
+    referenceMedian: 1000,
+    normalizedRatio: 1.0,
+    rawUserTimings: [1000],
+    rawReferenceTimings: [1000],
+    opsPerSec: 1000,
+    p50LatencyUs: 100,
+    p99LatencyUs: 400,
     ...overrides,
   }
 }
@@ -232,7 +248,7 @@ describe('evaluateCriteria', () => {
   })
 
   describe('benchmark-threshold', () => {
-    it('should return not-met with stub message', () => {
+    it('should return met when ops/sec exceeds threshold', () => {
       const criteria: ReadonlyArray<AcceptanceCriterion> = [
         makeCriterion({
           name: 'perf-target',
@@ -240,12 +256,63 @@ describe('evaluateCriteria', () => {
           assertion: { type: 'benchmark-threshold', expected: 100 },
         }),
       ]
-      const result = makeExecutionResult({ output: 'ops/sec: 150' })
+      const result = makeExecutionResult()
+      const benchmarkResult = makeBenchmarkResult({ opsPerSec: 150 })
+
+      const evaluated = evaluateCriteria(criteria, result, benchmarkResult)
+
+      expect(evaluated[0]!.status).toBe('met')
+      expect(evaluated[0]!.actual).toBe('150 ops/sec')
+    })
+
+    it('should return not-met when ops/sec is below threshold', () => {
+      const criteria: ReadonlyArray<AcceptanceCriterion> = [
+        makeCriterion({
+          name: 'perf-target',
+          order: 1,
+          assertion: { type: 'benchmark-threshold', expected: 200 },
+        }),
+      ]
+      const result = makeExecutionResult()
+      const benchmarkResult = makeBenchmarkResult({ opsPerSec: 150 })
+
+      const evaluated = evaluateCriteria(criteria, result, benchmarkResult)
+
+      expect(evaluated[0]!.status).toBe('not-met')
+      expect(evaluated[0]!.actual).toBe('150 ops/sec')
+    })
+
+    it('should return not-met with "No benchmark data" when no benchmark result available', () => {
+      const criteria: ReadonlyArray<AcceptanceCriterion> = [
+        makeCriterion({
+          name: 'perf-target',
+          order: 1,
+          assertion: { type: 'benchmark-threshold', expected: 100 },
+        }),
+      ]
+      const result = makeExecutionResult()
 
       const evaluated = evaluateCriteria(criteria, result)
 
       expect(evaluated[0]!.status).toBe('not-met')
-      expect(evaluated[0]!.actual).toBe('Benchmark evaluation not yet supported')
+      expect(evaluated[0]!.actual).toBe('No benchmark data')
+    })
+
+    it('should return met when ops/sec exactly equals threshold', () => {
+      const criteria: ReadonlyArray<AcceptanceCriterion> = [
+        makeCriterion({
+          name: 'perf-target',
+          order: 1,
+          assertion: { type: 'benchmark-threshold', expected: 100 },
+        }),
+      ]
+      const result = makeExecutionResult()
+      const benchmarkResult = makeBenchmarkResult({ opsPerSec: 100 })
+
+      const evaluated = evaluateCriteria(criteria, result, benchmarkResult)
+
+      expect(evaluated[0]!.status).toBe('met')
+      expect(evaluated[0]!.actual).toBe('100 ops/sec')
     })
   })
 

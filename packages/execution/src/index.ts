@@ -29,7 +29,15 @@ export type { FlyClientOptions } from './fly-client.js'
 
 // Request builder
 export { buildMachineRequest, MAX_CODE_SIZE_BYTES } from './machine-request-builder.js'
-export type { BuildMachineRequestOptions } from './machine-request-builder.js'
+export type { BuildMachineRequestOptions, ReferenceFile } from './machine-request-builder.js'
+
+// Benchmark runner
+export {
+  computeMedian,
+  parseBenchmarkOutput,
+  classifyBenchmarkError,
+} from './benchmark-runner.js'
+export type { BenchmarkRunResult, BenchmarkErrorType } from './benchmark-runner.js'
 
 // Orchestrator
 export { executeCode } from './execute.js'
