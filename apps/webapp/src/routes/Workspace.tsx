@@ -11,6 +11,7 @@ import { useSubmitCode } from '../hooks/use-submit-code'
 import { useStuckDetection } from '../hooks/use-stuck-detection'
 import { useAutoSave } from '../hooks/use-auto-save'
 import { useStuckIntervention } from '../hooks/use-stuck-intervention'
+import { usePreviousBenchmark } from '../hooks/use-previous-benchmark'
 import { useSession } from '../hooks/use-session'
 import { apiFetch } from '../lib/api-fetch'
 import { endSession } from '../lib/end-session'
@@ -24,7 +25,8 @@ function Workspace(): React.ReactElement | null {
   const showLoading = useDelayedLoading(isLoading)
 
   const navigate = useNavigate()
-  const { submit, submissionId, isRunning, outputLines, criteriaResults, allCriteriaMet } = useSubmitCode()
+  const { submit, submissionId, isRunning, outputLines, criteriaResults, allCriteriaMet, isBenchmarking, benchmarkResult } = useSubmitCode()
+  const { previousOpsPerSec } = usePreviousBenchmark(milestoneId)
 
   const stuckDetectionConfig = data?.stuckDetection ?? { thresholdMinutes: 10, stage2OffsetSeconds: 60 }
   const { resetTimer, isStage1, isStage2, stage1Timestamp } = useStuckDetection(stuckDetectionConfig)
@@ -131,9 +133,11 @@ function Workspace(): React.ReactElement | null {
   }, [milestoneId, resetTimer, submit])
 
   const handleBenchmark = useCallback(() => {
-    // No-op until Epic 7
+    if (!milestoneId) return
+    const code = useEditorStore.getState().content
     resetTimer()
-  }, [resetTimer])
+    submit({ milestoneId, code })
+  }, [milestoneId, resetTimer, submit])
 
   const completeMutation = useMutation({
     mutationKey: ['completion', 'complete'],
@@ -220,6 +224,9 @@ function Workspace(): React.ReactElement | null {
       allCriteriaMet={effectiveAllCriteriaMet}
       onCompleteMilestone={handleCompleteMilestone}
       conceptExplainerAssets={data.conceptExplainerAssets}
+      benchmarkResult={benchmarkResult}
+      isBenchmarking={isBenchmarking}
+      previousBenchmarkOpsPerSec={previousOpsPerSec}
       sessionId={sessionId}
       isStage1={isStage1}
       interventionStreamingContent={interventionStreamingContent}

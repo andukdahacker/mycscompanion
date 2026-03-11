@@ -14,6 +14,13 @@ interface SubmitCodeParams {
   readonly code: string
 }
 
+interface BenchmarkResultData {
+  readonly opsPerSec: number
+  readonly normalizedRatio: number
+  readonly userMedian: number
+  readonly referenceMedian: number
+}
+
 interface UseSubmitCodeResult {
   readonly submit: (params: SubmitCodeParams) => void
   readonly submissionId: string | null
@@ -21,12 +28,15 @@ interface UseSubmitCodeResult {
   readonly outputLines: ReadonlyArray<OutputLine>
   readonly criteriaResults: ReadonlyArray<CriterionResult> | null
   readonly allCriteriaMet: boolean
+  readonly isBenchmarking: boolean
+  readonly benchmarkResult: BenchmarkResultData | null
 }
 
 function useSubmitCode(): UseSubmitCodeResult {
   const queryClient = useQueryClient()
   const [submissionId, setSubmissionId] = useState<string | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
+  const [isBenchmarking, setIsBenchmarking] = useState(false)
   const [submitErrorOutput, setSubmitErrorOutput] = useState<ReadonlyArray<OutputLine> | null>(null)
 
   const compileErrorCountRef = useRef(0)
@@ -67,6 +77,13 @@ function useSubmitCode(): UseSubmitCodeResult {
 
   const { data: criteriaResults = null } = useQuery<ReadonlyArray<CriterionResult> | null>({
     queryKey: ['execution', 'criteria', submissionId],
+    queryFn: () => Promise.resolve(null),
+    enabled: !!submissionId,
+    staleTime: Infinity,
+  })
+
+  const { data: benchmarkResult = null } = useQuery<BenchmarkResultData | null>({
+    queryKey: ['execution', 'benchmark', submissionId],
     queryFn: () => Promise.resolve(null),
     enabled: !!submissionId,
     staleTime: Infinity,
@@ -138,11 +155,13 @@ function useSubmitCode(): UseSubmitCodeResult {
             })
           }
           setIsStreaming(false)
+          setIsBenchmarking(false)
           break
         }
         case 'complete':
           appendOutput({ kind: 'success', text: 'Build successful.' })
           setIsStreaming(false)
+          setIsBenchmarking(false)
           announceToScreenReader('Build successful')
           break
         case 'timeout':
@@ -153,6 +172,7 @@ function useSubmitCode(): UseSubmitCodeResult {
             isUserError: true,
           })
           setIsStreaming(false)
+          setIsBenchmarking(false)
           announceToScreenReader('Execution timed out')
           break
         case 'test_output':
@@ -162,15 +182,33 @@ function useSubmitCode(): UseSubmitCodeResult {
           appendOutput({ kind: event.passed ? 'success' : 'stderr', text: event.data })
           break
         case 'benchmark_progress':
+          setIsBenchmarking(true)
           appendOutput({
             kind: 'status',
             text: `Benchmark: ${event.iteration}/${event.total}`,
             phase: 'benchmarking',
           })
           break
-        case 'benchmark_result':
-          appendOutput({ kind: 'stdout', text: event.data })
+        case 'benchmark_result': {
+          setIsBenchmarking(false)
+          const subId = submissionIdRef.current
+          if (subId) {
+            queryClient.setQueryData<BenchmarkResultData>(
+              ['execution', 'benchmark', subId],
+              {
+                opsPerSec: event.opsPerSec,
+                normalizedRatio: event.normalizedRatio,
+                userMedian: event.userMedian,
+                referenceMedian: event.referenceMedian,
+              },
+            )
+          }
+          announceToScreenReader(
+            `Benchmark complete: ${Intl.NumberFormat().format(event.opsPerSec)} ops per second, ` +
+            `${event.normalizedRatio.toFixed(2)}x reference implementation`,
+          )
           break
+        }
         case 'criteria_results': {
           const sorted = [...event.results].sort((a, b) => a.order - b.order)
           const subId = submissionIdRef.current
@@ -196,12 +234,14 @@ function useSubmitCode(): UseSubmitCodeResult {
 
   const submit = useCallback(
     (params: SubmitCodeParams): void => {
-      // Reset criteria results from previous submission
+      // Reset criteria and benchmark results from previous submission
       if (submissionIdRef.current) {
         queryClient.removeQueries({ queryKey: ['execution', 'criteria', submissionIdRef.current] })
+        queryClient.removeQueries({ queryKey: ['execution', 'benchmark', submissionIdRef.current] })
       }
       setSubmissionId(null)
       setIsStreaming(false)
+      setIsBenchmarking(false)
       setSubmitErrorOutput(null)
       submissionIdRef.current = null
       maxSeenSequenceIdRef.current = -1
@@ -237,8 +277,8 @@ function useSubmitCode(): UseSubmitCodeResult {
     && criteriaResults.length > 0
     && criteriaResults.every((r) => r.status === 'met')
 
-  return { submit, submissionId, isRunning, outputLines, criteriaResults, allCriteriaMet }
+  return { submit, submissionId, isRunning, outputLines, criteriaResults, allCriteriaMet, isBenchmarking, benchmarkResult }
 }
 
 export { useSubmitCode }
-export type { SubmitCodeParams, UseSubmitCodeResult }
+export type { SubmitCodeParams, UseSubmitCodeResult, BenchmarkResultData }

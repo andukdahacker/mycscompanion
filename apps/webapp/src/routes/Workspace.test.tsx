@@ -46,6 +46,9 @@ vi.mock('../components/workspace/TerminalPanel', () => ({
     allCriteriaMet?: boolean
     onCompleteMilestone?: () => void
     conceptExplainerAssets: ReadonlyArray<Record<string, unknown>>
+    benchmarkResult?: Record<string, unknown> | null
+    isBenchmarking?: boolean
+    previousBenchmarkOpsPerSec?: number | null
   }) {
     return (
       <div
@@ -59,6 +62,9 @@ vi.mock('../components/workspace/TerminalPanel', () => ({
         data-all-criteria-met={String(props.allCriteriaMet ?? false)}
         data-has-complete-handler={String(!!props.onCompleteMilestone)}
         data-concept-assets-count={props.conceptExplainerAssets.length}
+        data-benchmark-result={props.benchmarkResult ? JSON.stringify(props.benchmarkResult) : ''}
+        data-is-benchmarking={String(props.isBenchmarking ?? false)}
+        data-previous-benchmark-ops={String(props.previousBenchmarkOpsPerSec ?? '')}
       />
     )
   },
@@ -184,6 +190,8 @@ describe('Workspace', () => {
       outputLines: [],
       criteriaResults: null,
       allCriteriaMet: false,
+      isBenchmarking: false,
+      benchmarkResult: null,
     })
     mockStuckDetectionReturn = { isStage1: false, isStage2: false, resetTimer: mockResetTimer, stage1Timestamp: null, stage2Timestamp: null }
     mockResetTimer.mockClear()
@@ -742,6 +750,63 @@ describe('Workspace', () => {
       unmount()
 
       expect(mockEndSession).toHaveBeenCalledWith('unmount-session-id')
+    })
+  })
+
+  describe('benchmark props flow', () => {
+    it('should pass benchmarkResult and isBenchmarking from useSubmitCode to TerminalPanel', () => {
+      mockUseSubmitCode.mockReturnValue({
+        submit: mockSubmitFn,
+        submissionId: 'sub-bench',
+        isRunning: false,
+        outputLines: [],
+        criteriaResults: null,
+        allCriteriaMet: false,
+        isBenchmarking: true,
+        benchmarkResult: { opsPerSec: 12400, normalizedRatio: 0.82, userMedian: 150, referenceMedian: 120 },
+      })
+
+      renderWorkspace()
+
+      const terminal = screen.getByTestId('terminal-panel')
+      expect(terminal.getAttribute('data-is-benchmarking')).toBe('true')
+      const result = JSON.parse(terminal.getAttribute('data-benchmark-result') ?? '{}') as Record<string, unknown>
+      expect(result).toEqual(expect.objectContaining({ opsPerSec: 12400 }))
+    })
+
+    it('should pass previousBenchmarkOpsPerSec from usePreviousBenchmark to TerminalPanel', () => {
+      renderWorkspace()
+
+      const terminal = screen.getByTestId('terminal-panel')
+      // usePreviousBenchmark is not mocked to return a value, so it should be empty
+      expect(terminal.getAttribute('data-previous-benchmark-ops')).toBe('')
+    })
+  })
+
+  describe('handleBenchmark', () => {
+    it('should call submit with correct params when benchmark is triggered', async () => {
+      renderWorkspace()
+
+      await act(async () => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, shiftKey: true, bubbles: true }))
+      })
+
+      expect(mockSubmitFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          milestoneId: 'milestone-1',
+          code: expect.any(String),
+        }),
+      )
+    })
+
+    it('should reset stuck detection timer on benchmark', async () => {
+      renderWorkspace()
+
+      await act(async () => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, shiftKey: true, bubbles: true }))
+      })
+
+      expect(mockResetTimer).toHaveBeenCalled()
     })
   })
 

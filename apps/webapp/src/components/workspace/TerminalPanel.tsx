@@ -4,9 +4,12 @@ import { ScrollArea } from '@mycscompanion/ui/src/components/ui/scroll-area'
 import type { AcceptanceCriterion, ConceptExplainerAsset, CriterionResult } from '@mycscompanion/shared'
 import { useWorkspaceUIStore } from '../../stores/workspace-ui-store'
 import { useAutoScroll } from '../../hooks/use-auto-scroll'
+import { useBenchmarkProgress } from '../../hooks/use-benchmark-progress'
 import { ErrorPresentation } from './ErrorPresentation'
 import { MilestoneBrief } from './MilestoneBrief'
 import { ConceptExplainers } from './ConceptExplainers'
+import { BenchmarkHeroDisplay } from './BenchmarkHeroDisplay'
+import type { BenchmarkResultData } from '../../hooks/use-submit-code'
 
 type OutputLine =
   | { readonly kind: 'stdout'; readonly text: string }
@@ -25,6 +28,9 @@ interface TerminalPanelProps {
   readonly allCriteriaMet?: boolean
   readonly onCompleteMilestone?: () => void
   readonly conceptExplainerAssets: readonly ConceptExplainerAsset[]
+  readonly benchmarkResult?: BenchmarkResultData | null
+  readonly isBenchmarking?: boolean
+  readonly previousBenchmarkOpsPerSec?: number | null
 }
 
 const TAB_LABELS: Record<string, string> = {
@@ -34,7 +40,8 @@ const TAB_LABELS: Record<string, string> = {
   criteria: 'Criteria',
 }
 
-function TerminalPanel({ outputLines, isRunning, onRetry, brief, criteria, criteriaResults, allCriteriaMet, onCompleteMilestone, conceptExplainerAssets }: TerminalPanelProps): React.ReactElement {
+function TerminalPanel({ outputLines, isRunning, onRetry, brief, criteria, criteriaResults, allCriteriaMet, onCompleteMilestone, conceptExplainerAssets, benchmarkResult, isBenchmarking, previousBenchmarkOpsPerSec }: TerminalPanelProps): React.ReactElement {
+  const benchmarkProgress = useBenchmarkProgress(isBenchmarking ?? false)
   const activeTab = useWorkspaceUIStore((s) => s.activeTerminalTab)
   const setActiveTab = useWorkspaceUIStore((s) => s.setActiveTerminalTab)
   const scrollRef = useAutoScroll([outputLines])
@@ -123,6 +130,43 @@ function TerminalPanel({ outputLines, isRunning, onRetry, brief, criteria, crite
         ) : effectiveTab === 'output' ? (
           <ScrollArea className="h-full" viewportRef={scrollRef}>
             <OutputContent outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} />
+            {isBenchmarking && !benchmarkResult ? (
+              <div className="flex items-center gap-2 p-3 text-secondary-foreground" data-testid="benchmark-progress">
+                {benchmarkProgress.state === 'running' ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                    <span>Running benchmark...</span>
+                  </>
+                ) : null}
+                {benchmarkProgress.state === 'elapsed' ? (
+                  <span>Running benchmark... {benchmarkProgress.elapsedSeconds}s</span>
+                ) : null}
+                {benchmarkProgress.state === 'context' ? (
+                  <span>Executing 1,000 operations...</span>
+                ) : null}
+                {benchmarkProgress.state === 'extended' ? (
+                  <span>Still running. Large datasets take longer.</span>
+                ) : null}
+                {benchmarkProgress.state === 'timeout' ? (
+                  <span className="text-destructive">Benchmark timed out. Your code may have an infinite loop or very slow operation. Check your implementation and try again.</span>
+                ) : null}
+              </div>
+            ) : null}
+            {benchmarkResult ? (
+              <BenchmarkHeroDisplay
+                value={benchmarkResult.opsPerSec}
+                unit="ops/sec"
+                normalizedRatio={benchmarkResult.normalizedRatio}
+                trendText={
+                  previousBenchmarkOpsPerSec != null && benchmarkResult.opsPerSec !== previousBenchmarkOpsPerSec
+                    ? benchmarkResult.opsPerSec > previousBenchmarkOpsPerSec
+                      ? `↑ from ${Intl.NumberFormat().format(previousBenchmarkOpsPerSec)} ops/sec`
+                      : `↓ from ${Intl.NumberFormat().format(previousBenchmarkOpsPerSec)} ops/sec`
+                    : undefined
+                }
+                isFirstRun={previousBenchmarkOpsPerSec == null || benchmarkResult.opsPerSec === previousBenchmarkOpsPerSec}
+              />
+            ) : null}
           </ScrollArea>
         ) : (
           <CriteriaContent criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} />

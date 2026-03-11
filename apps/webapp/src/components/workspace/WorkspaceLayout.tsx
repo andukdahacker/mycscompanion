@@ -9,6 +9,7 @@ import type { PanelSize } from '@mycscompanion/ui/src/components/ui/resizable'
 import { MessageCircle } from 'lucide-react'
 import { cn } from '@mycscompanion/ui/src/lib/utils'
 import type { AcceptanceCriterion, ConceptExplainerAsset, CriterionResult } from '@mycscompanion/shared'
+import type { BenchmarkResultData } from '../../hooks/use-submit-code'
 import { WorkspaceTopBar } from './WorkspaceTopBar'
 import { CodeEditor } from './CodeEditor'
 import { TerminalPanel } from './TerminalPanel'
@@ -32,6 +33,9 @@ interface WorkspaceLayoutProps {
   readonly allCriteriaMet?: boolean
   readonly onCompleteMilestone?: () => void
   readonly conceptExplainerAssets: readonly ConceptExplainerAsset[]
+  readonly benchmarkResult?: BenchmarkResultData | null
+  readonly isBenchmarking?: boolean
+  readonly previousBenchmarkOpsPerSec?: number | null
   readonly sessionId: string | null
   readonly isStage1?: boolean
   readonly interventionStreamingContent?: string
@@ -54,6 +58,9 @@ function WorkspaceLayout({
   allCriteriaMet,
   onCompleteMilestone,
   conceptExplainerAssets,
+  benchmarkResult,
+  isBenchmarking,
+  previousBenchmarkOpsPerSec,
   sessionId,
   isStage1,
   interventionStreamingContent,
@@ -156,7 +163,7 @@ function WorkspaceLayout({
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize="30%" minSize="120px">
-              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} conceptExplainerAssets={conceptExplainerAssets} />
+              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} conceptExplainerAssets={conceptExplainerAssets} benchmarkResult={benchmarkResult} isBenchmarking={isBenchmarking} previousBenchmarkOpsPerSec={previousBenchmarkOpsPerSec} />
             </ResizablePanel>
           </ResizablePanelGroup>
 
@@ -211,7 +218,7 @@ function WorkspaceLayout({
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize="30%" minSize="120px">
-              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} conceptExplainerAssets={conceptExplainerAssets} />
+              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} conceptExplainerAssets={conceptExplainerAssets} benchmarkResult={benchmarkResult} isBenchmarking={isBenchmarking} previousBenchmarkOpsPerSec={previousBenchmarkOpsPerSec} />
             </ResizablePanel>
           </ResizablePanelGroup>
         </ResizablePanel>

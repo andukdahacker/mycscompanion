@@ -5,6 +5,23 @@ import type { OutputLine } from './TerminalPanel'
 import { useWorkspaceUIStore } from '../../stores/workspace-ui-store'
 import type { AcceptanceCriterion, ConceptExplainerAsset, CriterionResult } from '@mycscompanion/shared'
 
+// Mock BenchmarkHeroDisplay
+vi.mock('./BenchmarkHeroDisplay', () => ({
+  BenchmarkHeroDisplay: function MockBenchmarkHeroDisplay(props: {
+    value: number
+    unit: string
+    normalizedRatio: number
+    trendText?: string
+    isFirstRun: boolean
+  }) {
+    return (
+      <div data-testid="benchmark-hero-display" data-value={props.value} data-trend={props.trendText ?? ''} data-first-run={String(props.isFirstRun)}>
+        {props.value} {props.unit}
+      </div>
+    )
+  },
+}))
+
 // Mock ErrorPresentation and ConceptExplainers to isolate TerminalPanel tests
 vi.mock('./ConceptExplainers', () => ({
   ConceptExplainers: function MockConceptExplainers(props: { assets: readonly ConceptExplainerAsset[] }) {
@@ -412,6 +429,79 @@ describe('TerminalPanel', () => {
       // Should not show diagrams tab, should show brief content
       expect(screen.queryByRole('tab', { name: /diagrams/i })).not.toBeInTheDocument()
       expect(screen.getByText('My Milestone')).toBeInTheDocument()
+    })
+  })
+
+  describe('Benchmark display', () => {
+    it('should render benchmark progress states in output area when benchmarking', () => {
+      render(
+        <TerminalPanel
+          {...DEFAULT_PROPS}
+          isBenchmarking={true}
+          benchmarkResult={null}
+        />,
+      )
+
+      expect(screen.getByTestId('benchmark-progress')).toBeInTheDocument()
+      expect(screen.getByText('Running benchmark...')).toBeInTheDocument()
+    })
+
+    it('should render BenchmarkHeroDisplay when benchmark result is available', () => {
+      render(
+        <TerminalPanel
+          {...DEFAULT_PROPS}
+          isBenchmarking={false}
+          benchmarkResult={{ opsPerSec: 12400, normalizedRatio: 0.82, userMedian: 150, referenceMedian: 120 }}
+          previousBenchmarkOpsPerSec={null}
+        />,
+      )
+
+      expect(screen.getByTestId('benchmark-hero-display')).toBeInTheDocument()
+      expect(screen.getByText(/12400/)).toBeInTheDocument()
+    })
+
+    it('should show improvement trend when current > previous', () => {
+      render(
+        <TerminalPanel
+          {...DEFAULT_PROPS}
+          isBenchmarking={false}
+          benchmarkResult={{ opsPerSec: 12400, normalizedRatio: 0.82, userMedian: 150, referenceMedian: 120 }}
+          previousBenchmarkOpsPerSec={8200}
+        />,
+      )
+
+      const display = screen.getByTestId('benchmark-hero-display')
+      expect(display.getAttribute('data-trend')).toContain('↑')
+      expect(display.getAttribute('data-first-run')).toBe('false')
+    })
+
+    it('should show regression trend when current < previous', () => {
+      render(
+        <TerminalPanel
+          {...DEFAULT_PROPS}
+          isBenchmarking={false}
+          benchmarkResult={{ opsPerSec: 6000, normalizedRatio: 0.5, userMedian: 200, referenceMedian: 120 }}
+          previousBenchmarkOpsPerSec={8200}
+        />,
+      )
+
+      const display = screen.getByTestId('benchmark-hero-display')
+      expect(display.getAttribute('data-trend')).toContain('↓')
+    })
+
+    it('should show no trend when current equals previous (first-run style)', () => {
+      render(
+        <TerminalPanel
+          {...DEFAULT_PROPS}
+          isBenchmarking={false}
+          benchmarkResult={{ opsPerSec: 8200, normalizedRatio: 0.82, userMedian: 150, referenceMedian: 120 }}
+          previousBenchmarkOpsPerSec={8200}
+        />,
+      )
+
+      const display = screen.getByTestId('benchmark-hero-display')
+      expect(display.getAttribute('data-trend')).toBe('')
+      expect(display.getAttribute('data-first-run')).toBe('true')
     })
   })
 })

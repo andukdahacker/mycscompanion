@@ -155,6 +155,22 @@ describe('GET /submissions/:submissionId/benchmark', () => {
     await app.close()
   })
 
+  it('should return 401 for unauthenticated request', async () => {
+    const { submissionId } = await seedData()
+    await seedBenchmarkResult(submissionId, TEST_UID)
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/submissions/${submissionId}/benchmark`,
+      // No authorization header
+    })
+
+    expect(res.statusCode).toBe(401)
+
+    await app.close()
+  })
+
   it('should return response fields in camelCase', async () => {
     const { submissionId } = await seedData()
     await seedBenchmarkResult(submissionId, TEST_UID)
@@ -185,6 +201,87 @@ describe('GET /submissions/:submissionId/benchmark', () => {
     expect(body).not.toHaveProperty('normalized_ratio')
     expect(body).not.toHaveProperty('reference_version')
     expect(body).not.toHaveProperty('created_at')
+
+    await app.close()
+  })
+})
+
+describe('GET /benchmark-results/latest/:milestoneId', () => {
+  it('should return latest benchmark result for user and milestone', async () => {
+    const { submissionId: sub1 } = await seedData()
+    await seedBenchmarkResult(sub1, TEST_UID)
+
+    // Create a second submission + benchmark (more recent)
+    const sub2Id = generateId()
+    await db
+      .insertInto('submissions')
+      .values({
+        id: sub2Id,
+        user_id: TEST_UID,
+        milestone_id: 'ms-bench-1',
+        code: 'package main // v2',
+        status: 'completed',
+      })
+      .execute()
+
+    const benchId2 = generateId()
+    await db
+      .insertInto('benchmark_results')
+      .values({
+        id: benchId2,
+        submission_id: sub2Id,
+        user_id: TEST_UID,
+        milestone_id: 'ms-bench-1',
+        benchmark_name: 'sequential-inserts',
+        raw_metrics: JSON.stringify({ userMedian: 12400, referenceMedian: 10100, opsPerSec: 12400 }),
+        normalized_ratio: '1.2277',
+        reference_version: 'milestone-1-v1',
+      })
+      .execute()
+
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/latest/ms-bench-1',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.id).toBe(benchId2)
+    expect(body.opsPerSec).toBe(12400)
+    expect(body.normalizedRatio).toBeCloseTo(1.2277, 4)
+
+    await app.close()
+  })
+
+  it('should return 404 when no benchmark results exist for milestone', async () => {
+    await seedData()
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/latest/ms-bench-1',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res.statusCode).toBe(404)
+    expect(res.json().error.code).toBe('NOT_FOUND')
+
+    await app.close()
+  })
+
+  it('should return 401 for unauthenticated request', async () => {
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/latest/ms-bench-1',
+      // No authorization header
+    })
+
+    expect(res.statusCode).toBe(401)
 
     await app.close()
   })
