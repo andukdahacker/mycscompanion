@@ -1,0 +1,6 @@
+- filename: kv-store-operations.svg
+  title: "Key-Value Store Operations"
+  altText: "Diagram showing how PUT, GET, and DELETE operations interact with the in-memory hash map data structure"
+- filename: persistence-flow.svg
+  title: "Persistence Flow"
+  altText: "Diagram showing the data persistence flow from in-memory storage to disk file and back during reload"

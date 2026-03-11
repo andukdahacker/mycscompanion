@@ -1,6 +1,7 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { MessageCircle, RefreshCw } from 'lucide-react'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
+import type { ConceptExplainerAsset } from '@mycscompanion/shared'
 import { useWorkspaceUIStore } from '../../stores/workspace-ui-store'
 import { useAutoScroll } from '../../hooks/use-auto-scroll'
 import { useTutorStream } from '../../hooks/use-tutor-stream'
@@ -13,18 +14,28 @@ interface TutorPanelProps {
   readonly readOnly?: boolean
   readonly interventionStreamingContent?: string
   readonly isInterventionStreaming?: boolean
+  readonly conceptExplainerAssets?: readonly ConceptExplainerAsset[]
 }
 
-function TutorPanel({ sessionId, readOnly = false, interventionStreamingContent, isInterventionStreaming }: TutorPanelProps): React.ReactElement {
+function TutorPanel({ sessionId, readOnly = false, interventionStreamingContent, isInterventionStreaming, conceptExplainerAssets }: TutorPanelProps): React.ReactElement {
   const tutorAvailable = useWorkspaceUIStore((s) => s.tutorAvailable)
   const tutorExpanded = useWorkspaceUIStore((s) => s.tutorExpanded)
   const setTutorAvailable = useWorkspaceUIStore((s) => s.setTutorAvailable)
   const setTutorExpanded = useWorkspaceUIStore((s) => s.setTutorExpanded)
 
+  const explainerAssetsMap = useMemo(() => {
+    if (!conceptExplainerAssets || conceptExplainerAssets.length === 0) return undefined
+    const map: Record<string, ConceptExplainerAsset> = {}
+    for (const asset of conceptExplainerAssets) {
+      map[asset.name] = asset
+    }
+    return map
+  }, [conceptExplainerAssets])
+
   const { messages, addOptimisticMessage, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useTutorMessages(sessionId)
 
-  const { sendMessage, isStreaming, streamingContent, error, clearError } = useTutorStream(sessionId)
+  const { sendMessage, isStreaming, streamingContent, error, clearError } = useTutorStream(sessionId, explainerAssetsMap)
 
   const scrollRef = useAutoScroll([messages, streamingContent, interventionStreamingContent])
 
@@ -95,7 +106,7 @@ function TutorPanel({ sessionId, readOnly = false, interventionStreamingContent,
         )}
 
         {messages.map((msg) => (
-          <TutorMessage key={msg.id} message={msg} />
+          <TutorMessage key={msg.id} message={msg} conceptExplainerAssets={explainerAssetsMap} />
         ))}
 
         {/* Intervention streaming takes priority over regular streaming */}
@@ -104,12 +115,14 @@ function TutorPanel({ sessionId, readOnly = false, interventionStreamingContent,
             message={{ id: 'intervention-streaming', role: 'assistant', content: '', model: null, createdAt: new Date().toISOString() }}
             isStreaming
             streamingContent={interventionStreamingContent}
+            conceptExplainerAssets={explainerAssetsMap}
           />
         ) : isStreaming && streamingContent ? (
           <TutorMessage
             message={{ id: 'streaming', role: 'assistant', content: '', model: null, createdAt: new Date().toISOString() }}
             isStreaming
             streamingContent={streamingContent}
+            conceptExplainerAssets={explainerAssetsMap}
           />
         ) : null}
       </div>

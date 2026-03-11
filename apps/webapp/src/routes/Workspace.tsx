@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router'
 import { useMutation } from '@tanstack/react-query'
-import type { CompleteMilestoneResponse } from '@mycscompanion/shared'
+import type { CompleteMilestoneResponse, ConceptExplainerAsset } from '@mycscompanion/shared'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
 import { WorkspaceLayout } from '../components/workspace/WorkspaceLayout'
 import { WorkspaceSkeleton } from '../components/workspace/WorkspaceSkeleton'
@@ -82,8 +82,18 @@ function Workspace(): React.ReactElement | null {
     }
   }, [])
 
+  // Build explainer assets map for screen reader announcements
+  const explainerAssetsMap = useMemo(() => {
+    if (!data?.conceptExplainerAssets || data.conceptExplainerAssets.length === 0) return undefined
+    const map: Record<string, ConceptExplainerAsset> = {}
+    for (const asset of data.conceptExplainerAssets) {
+      map[asset.name] = asset
+    }
+    return map
+  }, [data?.conceptExplainerAssets])
+
   // Stuck intervention hook
-  const { triggerIntervention, isInterventionStreaming, interventionStreamingContent } = useStuckIntervention(sessionId)
+  const { triggerIntervention, isInterventionStreaming, interventionStreamingContent } = useStuckIntervention(sessionId, explainerAssetsMap)
 
   // Stage 2 auto-expand: expand tutor panel when Stage 2 triggers (AC: #2, #7)
   const tutorAvailable = useWorkspaceUIStore((s) => s.tutorAvailable)

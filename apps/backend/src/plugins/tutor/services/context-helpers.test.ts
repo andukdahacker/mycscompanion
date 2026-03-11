@@ -8,6 +8,7 @@ import {
   loadUserBackground,
   loadMilestoneBrief,
   loadSessionSummary,
+  loadConceptExplainerMetadata,
 } from './context-helpers.js'
 import type { RedisCache } from './context-assembler.js'
 
@@ -182,6 +183,52 @@ describe('context-helpers', () => {
       const brief = await loadMilestoneBrief(mockRedis, CONTENT_FIXTURES_ROOT, 'nonexistent-milestone')
 
       expect(brief).toBe('(No milestone brief available)')
+    })
+  })
+
+  describe('loadConceptExplainerMetadata', () => {
+    it('should return correct metadata when manifest and SVGs exist', async () => {
+      const mockRedis = createMockRedis()
+      const result = await loadConceptExplainerMetadata(mockRedis, CONTENT_FIXTURES_ROOT, 'test-milestone')
+
+      expect(result).toHaveLength(2)
+      expect(result).toEqual(
+        expect.arrayContaining([
+          {
+            filename: 'kv-store-operations.svg',
+            title: 'Key-Value Store Operations',
+            altText: 'Diagram showing how PUT, GET, and DELETE operations interact with the in-memory hash map data structure',
+          },
+          {
+            filename: 'persistence-flow.svg',
+            title: 'Persistence Flow',
+            altText: 'Diagram showing the data persistence flow from in-memory storage to disk file and back during reload',
+          },
+        ])
+      )
+    })
+
+    it('should cache result in Redis', async () => {
+      const mockRedis = createMockRedis()
+      await loadConceptExplainerMetadata(mockRedis, CONTENT_FIXTURES_ROOT, 'test-milestone')
+
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        'tutor:explainers:test-milestone',
+        expect.any(String),
+        'EX',
+        3600
+      )
+
+      // Second call should hit cache
+      const result = await loadConceptExplainerMetadata(mockRedis, CONTENT_FIXTURES_ROOT, 'test-milestone')
+      expect(result).toHaveLength(2)
+    })
+
+    it('should return empty array when no assets directory exists', async () => {
+      const mockRedis = createMockRedis()
+      const result = await loadConceptExplainerMetadata(mockRedis, CONTENT_FIXTURES_ROOT, 'nonexistent-milestone')
+
+      expect(result).toEqual([])
     })
   })
 

@@ -4,12 +4,14 @@ import type { InfiniteData } from '@tanstack/react-query'
 import type {
   TutorStreamEvent,
   TutorConversationMessage,
+  ConceptExplainerAsset,
 } from '@mycscompanion/shared'
 import { auth } from '../lib/firebase'
 import { API_URL } from '../lib/api-fetch'
 import { useWorkspaceUIStore } from '../stores/workspace-ui-store'
 import { announceToScreenReader } from '../components/workspace/workspace-a11y'
 import { parseSSEStream } from '../lib/parse-sse-stream'
+import { stripExplainerRefsForA11y } from '../lib/parse-explainer-refs'
 
 interface MessagesPage {
   readonly messages: ReadonlyArray<TutorConversationMessage>
@@ -39,13 +41,18 @@ function parseErrorBody(body: unknown, fallback: string): string {
   return typeof message === 'string' ? message : fallback
 }
 
-function useTutorStream(sessionId: string | null): UseTutorStreamResult {
+function useTutorStream(
+  sessionId: string | null,
+  explainerAssetsMap?: Readonly<Record<string, ConceptExplainerAsset>>
+): UseTutorStreamResult {
   const queryClient = useQueryClient()
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [error, setError] = useState<TutorHookError | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const isStreamingRef = useRef(false)
+  const assetsMapRef = useRef(explainerAssetsMap)
+  assetsMapRef.current = explainerAssetsMap
 
   const clearError = useCallback(() => {
     setError(null)
@@ -174,8 +181,8 @@ function useTutorStream(sessionId: string | null): UseTutorStreamResult {
                   },
                 )
 
-                // Announce to screen reader
-                announceToScreenReader(event.content)
+                // Announce to screen reader (strip explainer refs for readable text)
+                announceToScreenReader(stripExplainerRefsForA11y(event.content, assetsMapRef.current))
                 break
               }
 

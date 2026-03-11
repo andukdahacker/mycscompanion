@@ -258,6 +258,49 @@ describe('ContextAssembler', () => {
       expect(prompt).not.toContain('{{user_background}}')
     })
 
+    it('should include explainer metadata in system prompt when assets exist', async () => {
+      const mockRedis = createMockRedis()
+      const assembler = createContextAssembler({
+        db,
+        redis: mockRedis,
+        contentRoot: CONTENT_FIXTURES_ROOT,
+        promptsRoot: PROMPTS_FIXTURES_ROOT,
+      })
+
+      const prompt = await assembler.assembleSystemPrompt({
+        userId: TEST_UID,
+        sessionId,
+        milestoneId,
+        milestoneSlug: 'test-milestone',
+      })
+
+      expect(prompt).toContain('kv-store-operations.svg')
+      expect(prompt).toContain('Key-Value Store Operations')
+      expect(prompt).toContain('persistence-flow.svg')
+      expect(prompt).toContain('Persistence Flow')
+      expect(prompt).not.toContain('{{available_explainers}}')
+    })
+
+    it('should replace placeholder with no explainers message when no assets exist', async () => {
+      const mockRedis = createMockRedis()
+      const assembler = createContextAssembler({
+        db,
+        redis: mockRedis,
+        contentRoot: CONTENT_FIXTURES_ROOT,
+        promptsRoot: PROMPTS_FIXTURES_ROOT,
+      })
+
+      const prompt = await assembler.assembleSystemPrompt({
+        userId: TEST_UID,
+        sessionId,
+        milestoneId,
+        milestoneSlug: 'nonexistent-milestone',
+      })
+
+      expect(prompt).toContain('No visual explainers available for this milestone.')
+      expect(prompt).not.toContain('{{available_explainers}}')
+    })
+
     it('should cache milestone brief in Redis', async () => {
       const mockRedis = createMockRedis()
       const assembler = createContextAssembler({

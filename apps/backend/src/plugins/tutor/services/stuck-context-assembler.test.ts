@@ -229,6 +229,29 @@ describe('StuckContextAssembler', () => {
       expect(prompt).toContain('(No previous snapshot for comparison)')
     })
 
+    it('should include explainer metadata in prompt when assets exist', async () => {
+      const mockRedis = createMockRedis()
+      const assembler = createStuckContextAssembler({
+        db,
+        redis: mockRedis,
+        contentRoot: CONTENT_FIXTURES_ROOT,
+        promptsRoot: PROMPTS_FIXTURES_ROOT,
+      })
+
+      const prompt = await assembler.assembleStuckInterventionPrompt({
+        userId: TEST_UID,
+        sessionId,
+        milestoneId,
+        milestoneSlug: 'test-milestone',
+        timeStuckMinutes: 15,
+      })
+
+      expect(prompt).toContain('kv-store-operations.svg')
+      expect(prompt).toContain('Key-Value Store Operations')
+      expect(prompt).toContain('persistence-flow.svg')
+      expect(prompt).not.toContain('{{available_explainers}}')
+    })
+
     it('should cache stuck intervention prompt template', async () => {
       const mockRedis = createMockRedis()
       const assembler = createStuckContextAssembler({

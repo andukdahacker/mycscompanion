@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { InfiniteData } from '@tanstack/react-query'
-import type { TutorStreamEvent, TutorConversationMessage } from '@mycscompanion/shared'
+import type { TutorStreamEvent, TutorConversationMessage, ConceptExplainerAsset } from '@mycscompanion/shared'
 import { auth } from '../lib/firebase'
 import { API_URL } from '../lib/api-fetch'
 import { useWorkspaceUIStore } from '../stores/workspace-ui-store'
 import { announceToScreenReader } from '../components/workspace/workspace-a11y'
 import { parseSSEStream } from '../lib/parse-sse-stream'
+import { stripExplainerRefsForA11y } from '../lib/parse-explainer-refs'
 import type { MessagesPage } from './use-tutor-stream'
 
 interface UseStuckInterventionResult {
@@ -17,12 +18,15 @@ interface UseStuckInterventionResult {
 
 function useStuckIntervention(
   sessionId: string | null,
+  explainerAssetsMap?: Readonly<Record<string, ConceptExplainerAsset>>
 ): UseStuckInterventionResult {
   const queryClient = useQueryClient()
   const [isInterventionStreaming, setIsInterventionStreaming] = useState(false)
   const [interventionStreamingContent, setInterventionStreamingContent] = useState('')
   const abortControllerRef = useRef<AbortController | null>(null)
   const isStreamingRef = useRef(false)
+  const assetsMapRef = useRef(explainerAssetsMap)
+  assetsMapRef.current = explainerAssetsMap
 
   const triggerIntervention = useCallback(
     (timeStuckMinutes: number) => {
@@ -153,7 +157,7 @@ function useStuckIntervention(
                   },
                 )
 
-                announceToScreenReader(event.content)
+                announceToScreenReader(stripExplainerRefsForA11y(event.content, assetsMapRef.current))
                 break
               }
 

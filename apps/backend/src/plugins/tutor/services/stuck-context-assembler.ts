@@ -9,6 +9,7 @@ import {
   loadCriteriaStatus,
   loadUserBackground,
   loadSessionSummary,
+  loadConceptExplainerMetadata,
 } from './context-helpers.js'
 
 export interface StuckContextAssemblerOptions {
@@ -101,6 +102,7 @@ export function createStuckContextAssembler(opts: StuckContextAssemblerOptions):
         sessionSummary,
         stuckCriterion,
         recentDiffs,
+        explainerMetadata,
       ] = await Promise.all([
         loadPromptTemplate(),
         loadMilestoneBrief(redis, contentRoot, params.milestoneSlug),
@@ -110,7 +112,15 @@ export function createStuckContextAssembler(opts: StuckContextAssemblerOptions):
         loadSessionSummary(db, params.userId, params.milestoneId),
         computeStuckCriterion(params.userId, params.milestoneId),
         computeRecentDiffs(params.userId, params.milestoneId),
+        loadConceptExplainerMetadata(redis, contentRoot, params.milestoneSlug),
       ])
+
+      const explainersText =
+        explainerMetadata.length > 0
+          ? explainerMetadata
+              .map((e) => `- ${e.filename}: "${e.title}" — ${e.altText}`)
+              .join('\n')
+          : 'No visual explainers available for this milestone.'
 
       let prompt = template
         .replace('{{milestone_brief}}', milestoneBrief)
@@ -120,6 +130,7 @@ export function createStuckContextAssembler(opts: StuckContextAssemblerOptions):
         .replace('{{time_stuck_minutes}}', String(params.timeStuckMinutes))
         .replace('{{recent_diffs}}', recentDiffs)
         .replace('{{user_background}}', userBackground)
+        .replace('{{available_explainers}}', explainersText)
 
       if (sessionSummary) {
         prompt += `\n\n## Previous Session Summary\n\n${sessionSummary}`

@@ -1,12 +1,15 @@
 import { useMemo } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { TutorConversationMessage } from '@mycscompanion/shared'
+import type { TutorConversationMessage, ConceptExplainerAsset } from '@mycscompanion/shared'
+import { parseExplainerRefs } from '../../lib/parse-explainer-refs.js'
+import { TutorExplainerCard } from './TutorExplainerCard'
 
 interface TutorMessageProps {
   readonly message: TutorConversationMessage
   readonly isStreaming?: boolean
   readonly streamingContent?: string
+  readonly conceptExplainerAssets?: Readonly<Record<string, ConceptExplainerAsset>>
 }
 
 const TUTOR_MARKDOWN_COMPONENTS = {
@@ -53,6 +56,8 @@ const TUTOR_MARKDOWN_COMPONENTS = {
   ),
 }
 
+const PARTIAL_EXPLAINER_TAIL = /\[explainer:[^\]]*$/
+
 function formatRelativeTime(dateStr: string): string {
   const now = Date.now()
   const then = new Date(dateStr).getTime()
@@ -73,7 +78,67 @@ function formatRelativeTime(dateStr: string): string {
   }).format(new Date(dateStr))
 }
 
-function TutorMessage({ message, isStreaming = false, streamingContent }: TutorMessageProps): React.ReactElement {
+function renderAssistantContent(
+  rawContent: string,
+  isStreaming: boolean,
+  assetsMap?: Readonly<Record<string, ConceptExplainerAsset>>
+): React.ReactNode[] {
+  // During streaming, suppress partial [explainer: at end of text
+  let content = rawContent
+  if (isStreaming) {
+    const partialMatch = PARTIAL_EXPLAINER_TAIL.exec(content)
+    if (partialMatch) {
+      content = content.slice(0, partialMatch.index)
+    }
+  }
+
+  const { explainerRefs } = parseExplainerRefs(content)
+
+  if (explainerRefs.length === 0) {
+    return [
+      <Markdown key="md-0" components={TUTOR_MARKDOWN_COMPONENTS} remarkPlugins={[remarkGfm]}>
+        {content}
+      </Markdown>,
+    ]
+  }
+
+  // Split text around explainer references and interleave with cards
+  const segments: React.ReactNode[] = []
+  let lastEnd = 0
+
+  for (const ref of explainerRefs) {
+    const matchStr = `[explainer:${ref.filename}]`
+    const textBefore = content.slice(lastEnd, ref.position)
+
+    if (textBefore) {
+      segments.push(
+        <Markdown key={`md-${ref.position}`} components={TUTOR_MARKDOWN_COMPONENTS} remarkPlugins={[remarkGfm]}>
+          {textBefore}
+        </Markdown>
+      )
+    }
+
+    const asset = assetsMap?.[ref.filename]
+    if (asset) {
+      segments.push(<TutorExplainerCard key={`exp-${ref.position}`} asset={asset} />)
+    }
+
+    lastEnd = ref.position + matchStr.length
+  }
+
+  const trailing = content.slice(lastEnd)
+  if (trailing) {
+    segments.push(
+      <Markdown key={`md-${lastEnd}`} components={TUTOR_MARKDOWN_COMPONENTS} remarkPlugins={[remarkGfm]}>
+        {trailing}
+      </Markdown>
+    )
+  }
+
+  return segments
+}
+
+function TutorMessage({ message, isStreaming = false, streamingContent, conceptExplainerAssets }: TutorMessageProps): React.ReactElement {
   const isUser = message.role === 'user'
   const content = isStreaming && streamingContent ? streamingContent : message.content
 
@@ -94,9 +159,7 @@ function TutorMessage({ message, isStreaming = false, streamingContent }: TutorM
         {isUser ? (
           <p className="text-sm whitespace-pre-wrap">{content}</p>
         ) : (
-          <Markdown components={TUTOR_MARKDOWN_COMPONENTS} remarkPlugins={[remarkGfm]}>
-            {content}
-          </Markdown>
+          renderAssistantContent(content, isStreaming, conceptExplainerAssets)
         )}
 
         {isStreaming && (

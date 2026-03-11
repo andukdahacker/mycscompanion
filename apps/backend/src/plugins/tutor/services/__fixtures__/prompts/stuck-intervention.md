@@ -10,3 +10,7 @@ You are helping a learner who has been stuck for {{time_stuck_minutes}} minutes.
 - **Stuck criterion:** {{stuck_criterion}}
 - **Recent diffs:** {{recent_diffs}}
 - **Learner background:** {{user_background}}
+
+## Available Visual Explainers
+
+{{available_explainers}}

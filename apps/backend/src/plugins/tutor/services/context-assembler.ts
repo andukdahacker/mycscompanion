@@ -8,6 +8,7 @@ import {
   loadCriteriaStatus,
   loadUserBackground,
   loadSessionSummary,
+  loadConceptExplainerMetadata,
 } from './context-helpers.js'
 
 export interface RedisCache {
@@ -51,7 +52,7 @@ export function createContextAssembler(opts: ContextAssemblerOptions): ContextAs
 
   return {
     async assembleSystemPrompt(params: AssembleParams): Promise<string> {
-      const [basePrompt, milestoneBrief, currentCode, criteriaStatus, userBackground, sessionSummary] =
+      const [basePrompt, milestoneBrief, currentCode, criteriaStatus, userBackground, sessionSummary, explainerMetadata] =
         await Promise.all([
           loadBasePrompt(),
           loadMilestoneBrief(redis, contentRoot, params.milestoneSlug),
@@ -59,13 +60,22 @@ export function createContextAssembler(opts: ContextAssemblerOptions): ContextAs
           loadCriteriaStatus(db, params.userId, params.milestoneId),
           loadUserBackground(db, params.userId),
           loadSessionSummary(db, params.userId, params.milestoneId),
+          loadConceptExplainerMetadata(redis, contentRoot, params.milestoneSlug),
         ])
+
+      const explainersText =
+        explainerMetadata.length > 0
+          ? explainerMetadata
+              .map((e) => `- ${e.filename}: "${e.title}" — ${e.altText}`)
+              .join('\n')
+          : 'No visual explainers available for this milestone.'
 
       let prompt = basePrompt
         .replace('{{milestone_brief}}', milestoneBrief)
         .replace('{{current_code}}', currentCode)
         .replace('{{criteria_status}}', criteriaStatus)
         .replace('{{user_background}}', userBackground)
+        .replace('{{available_explainers}}', explainersText)
 
       if (sessionSummary) {
         prompt += `\n\n## Previous Session Summary\n\n${sessionSummary}`

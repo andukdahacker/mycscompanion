@@ -136,6 +136,7 @@ function WorkspaceLayout({
         milestoneNumber={milestoneNumber}
         progress={progress}
         sessionId={sessionId}
+        conceptExplainerAssets={conceptExplainerAssets}
       />
     )
   }
@@ -186,7 +187,7 @@ function WorkspaceLayout({
                 data-testid="tutor-overlay"
                 className="fixed right-0 top-12 z-40 flex h-[calc(100vh-48px)] w-[300px] flex-col border-l bg-background shadow-lg"
               >
-                <TutorPanel sessionId={sessionId} interventionStreamingContent={interventionStreamingContent} isInterventionStreaming={isInterventionStreaming} />
+                <TutorPanel sessionId={sessionId} interventionStreamingContent={interventionStreamingContent} isInterventionStreaming={isInterventionStreaming} conceptExplainerAssets={conceptExplainerAssets} />
               </div>
             </>
           )}
@@ -234,7 +235,7 @@ function WorkspaceLayout({
         >
           <div data-testid="tutor-panel" className="flex h-full flex-col">
             {tutorExpanded ? (
-              <TutorPanel sessionId={sessionId} interventionStreamingContent={interventionStreamingContent} isInterventionStreaming={isInterventionStreaming} />
+              <TutorPanel sessionId={sessionId} interventionStreamingContent={interventionStreamingContent} isInterventionStreaming={isInterventionStreaming} conceptExplainerAssets={conceptExplainerAssets} />
             ) : (
               <button
                 className={cn(
@@ -265,11 +266,13 @@ function MobileLayout({
   milestoneNumber,
   progress,
   sessionId,
+  conceptExplainerAssets,
 }: {
   readonly milestoneName: string
   readonly milestoneNumber: number
   readonly progress: number
   readonly sessionId: string | null
+  readonly conceptExplainerAssets: readonly ConceptExplainerAsset[]
 }): React.ReactElement {
   const tutorExpanded = useWorkspaceUIStore((s) => s.tutorExpanded)
 
@@ -285,7 +288,7 @@ function MobileLayout({
       {/* Read-only tutor panel on mobile */}
       {tutorExpanded && (
         <div className="flex-1 border-t">
-          <TutorPanel sessionId={sessionId} readOnly />
+          <TutorPanel sessionId={sessionId} readOnly conceptExplainerAssets={conceptExplainerAssets} />
         </div>
       )}
       <div id="workspace-announcer" aria-live="polite" role="status" className="sr-only" />

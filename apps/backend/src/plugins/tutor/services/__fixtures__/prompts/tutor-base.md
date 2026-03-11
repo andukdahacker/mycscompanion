@@ -8,3 +8,7 @@ You are a tutor. Never give direct answers.
 - **Current code:** {{current_code}}
 - **Acceptance criteria status:** {{criteria_status}}
 - **Learner background:** {{user_background}}
+
+## Available Visual Explainers
+
+{{available_explainers}}

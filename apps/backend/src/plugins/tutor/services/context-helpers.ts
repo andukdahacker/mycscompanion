@@ -1,8 +1,67 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import yaml from 'js-yaml'
 import type { Kysely } from 'kysely'
 import type { DB, CriterionResult } from '@mycscompanion/shared'
 import type { RedisCache } from './context-assembler.js'
+
+export interface ExplainerMetadata {
+  readonly filename: string
+  readonly title: string
+  readonly altText: string
+}
+
+interface ManifestEntry {
+  readonly filename: string
+  readonly title?: string
+  readonly altText?: string
+}
+
+export async function loadConceptExplainerMetadata(
+  redis: RedisCache,
+  contentRoot: string,
+  slug: string
+): Promise<readonly ExplainerMetadata[]> {
+  const cacheKey = `tutor:explainers:${slug}`
+  const cached = await redis.get(cacheKey)
+  if (cached) return JSON.parse(cached) as ExplainerMetadata[]
+
+  try {
+    const assetsDir = join(contentRoot, slug, 'assets')
+    const files = await readdir(assetsDir)
+    const svgFiles = files.filter((f) => f.endsWith('.svg'))
+    if (svgFiles.length === 0) {
+      return []
+    }
+
+    let manifest: readonly ManifestEntry[] = []
+    try {
+      const raw = await readFile(join(assetsDir, 'manifest.yaml'), 'utf-8')
+      const parsed = yaml.load(raw)
+      if (Array.isArray(parsed)) {
+        manifest = parsed as ManifestEntry[]
+      }
+    } catch {
+      // No manifest — use filenames only
+    }
+
+    const manifestMap = new Map(manifest.map((entry) => [entry.filename, entry]))
+
+    const result = svgFiles.map((name) => {
+      const entry = manifestMap.get(name)
+      return {
+        filename: name,
+        title: entry?.title ?? name,
+        altText: entry?.altText ?? '',
+      }
+    })
+
+    await redis.set(cacheKey, JSON.stringify(result), 'EX', 3600)
+    return result
+  } catch {
+    return []
+  }
+}
 
 export async function loadMilestoneBrief(
   redis: RedisCache,

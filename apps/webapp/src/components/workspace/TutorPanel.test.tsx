@@ -19,6 +19,14 @@ vi.mock('./workspace-a11y', () => ({
   announceToScreenReader: vi.fn(),
 }))
 
+// Mock dialog to avoid portal issues
+vi.mock('@mycscompanion/ui/src/components/ui/dialog', () => ({
+  Dialog: ({ children, open }: { children: React.ReactNode; open: boolean }) =>
+    open ? <div data-testid="dialog">{children}</div> : null,
+  DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}))
+
 // Mock useTutorMessages
 const mockAddOptimisticMessage = vi.fn()
 const mockFetchNextPage = vi.fn().mockResolvedValue({})
@@ -185,6 +193,33 @@ describe('TutorPanel', () => {
 
     expect(mockAddOptimisticMessage).toHaveBeenCalledWith('How do I use maps?')
     expect(mockSendMessage).toHaveBeenCalledWith('How do I use maps?')
+  })
+
+  it('should pass concept explainer assets to message rendering', () => {
+    mockUseTutorMessages.mockReturnValue({
+      messages: [
+        { id: 'msg-1', role: 'assistant', content: 'See [explainer:kv-store-operations.svg] here', model: 'haiku', createdAt: new Date().toISOString() },
+      ],
+      addOptimisticMessage: mockAddOptimisticMessage,
+      fetchNextPage: mockFetchNextPage,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+    })
+
+    const queryClient = createTestQueryClient()
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TutorPanel
+          sessionId="session-1"
+          conceptExplainerAssets={[
+            { name: 'kv-store-operations.svg', path: '/assets/milestones/01-kv-store/kv-store-operations.svg', title: 'Key-Value Store Operations', altText: 'KV diagram' },
+          ]}
+        />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText('Key-Value Store Operations')).toBeInTheDocument()
+    expect(screen.getByText('View diagram')).toBeInTheDocument()
   })
 
   it('should not send empty or whitespace-only messages', () => {
