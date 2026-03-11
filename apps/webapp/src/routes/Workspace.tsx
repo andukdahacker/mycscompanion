@@ -227,6 +227,7 @@ function Workspace(): React.ReactElement | null {
       benchmarkResult={benchmarkResult}
       isBenchmarking={isBenchmarking}
       previousBenchmarkOpsPerSec={previousOpsPerSec}
+      milestoneId={milestoneId}
       sessionId={sessionId}
       isStage1={isStage1}
       interventionStreamingContent={interventionStreamingContent}

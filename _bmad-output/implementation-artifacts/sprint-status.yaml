@@ -121,7 +121,7 @@ development_status:
   epic-7: in-progress
   7-1-benchmark-runner-and-reference-normalization: done
   7-2-benchmark-results-display: done
-  7-3-historical-benchmark-results: backlog
+  7-3-historical-benchmark-results: done
   7-4-benchmark-trajectory-visualization: backlog
   7-5-progressive-enhancements-to-overview-and-completion: backlog
   epic-7-retrospective: optional

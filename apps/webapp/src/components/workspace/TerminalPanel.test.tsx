@@ -22,6 +22,13 @@ vi.mock('./BenchmarkHeroDisplay', () => ({
   },
 }))
 
+// Mock BenchmarkHistoryList
+vi.mock('./BenchmarkHistoryList', () => ({
+  BenchmarkHistoryList: function MockBenchmarkHistoryList(props: { milestoneId: string | undefined }) {
+    return <div data-testid="benchmark-history-list">History for {props.milestoneId}</div>
+  },
+}))
+
 // Mock ErrorPresentation and ConceptExplainers to isolate TerminalPanel tests
 vi.mock('./ConceptExplainers', () => ({
   ConceptExplainers: function MockConceptExplainers(props: { assets: readonly ConceptExplainerAsset[] }) {
@@ -429,6 +436,28 @@ describe('TerminalPanel', () => {
       // Should not show diagrams tab, should show brief content
       expect(screen.queryByRole('tab', { name: /diagrams/i })).not.toBeInTheDocument()
       expect(screen.getByText('My Milestone')).toBeInTheDocument()
+    })
+  })
+
+  describe('History tab', () => {
+    it('should render History tab when milestoneId is provided', () => {
+      render(<TerminalPanel {...DEFAULT_PROPS} milestoneId="ms-1" />)
+
+      expect(screen.getByRole('tab', { name: /history/i })).toBeInTheDocument()
+    })
+
+    it('should show BenchmarkHistoryList when History tab is clicked', () => {
+      useWorkspaceUIStore.setState({ activeTerminalTab: 'history' })
+      render(<TerminalPanel {...DEFAULT_PROPS} milestoneId="ms-1" />)
+
+      expect(screen.getByTestId('benchmark-history-list')).toBeInTheDocument()
+      expect(screen.getByText('History for ms-1')).toBeInTheDocument()
+    })
+
+    it('should not show History tab when milestoneId is not provided', () => {
+      render(<TerminalPanel {...DEFAULT_PROPS} />)
+
+      expect(screen.queryByRole('tab', { name: /history/i })).not.toBeInTheDocument()
     })
   })
 

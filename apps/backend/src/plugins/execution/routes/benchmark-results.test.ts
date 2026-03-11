@@ -286,3 +286,193 @@ describe('GET /benchmark-results/latest/:milestoneId', () => {
     await app.close()
   })
 })
+
+describe('GET /benchmark-results/history/:milestoneId', () => {
+  async function seedMultipleBenchmarks(count: number) {
+    await seedData()
+    const ids: string[] = []
+    for (let i = 0; i < count; i++) {
+      const subId = generateId()
+      await db
+        .insertInto('submissions')
+        .values({
+          id: subId,
+          user_id: TEST_UID,
+          milestone_id: 'ms-bench-1',
+          code: `package main // v${i + 1}`,
+          status: 'completed',
+        })
+        .execute()
+
+      const benchId = generateId()
+      // Stagger created_at by 1 second each to ensure ordering (deterministic base)
+      const createdAt = new Date(new Date('2026-01-01T00:00:00Z').getTime() + i * 1000)
+      await db
+        .insertInto('benchmark_results')
+        .values({
+          id: benchId,
+          submission_id: subId,
+          user_id: TEST_UID,
+          milestone_id: 'ms-bench-1',
+          benchmark_name: 'sequential-inserts',
+          raw_metrics: JSON.stringify({
+            userMedian: 8000 + i * 1000,
+            referenceMedian: 10100,
+            opsPerSec: 8000 + i * 1000,
+            p50LatencyUs: 120,
+            p99LatencyUs: 445,
+          }),
+          normalized_ratio: String(((8000 + i * 1000) / 10100).toFixed(4)),
+          reference_version: 'milestone-1-v1',
+          created_at: createdAt,
+        })
+        .execute()
+
+      ids.push(benchId)
+    }
+    return ids
+  }
+
+  it('should return results in chronological order (oldest first)', async () => {
+    await seedMultipleBenchmarks(3)
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/history/ms-bench-1',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.results).toHaveLength(3)
+    // Oldest first — opsPerSec should be ascending
+    expect(body.results[0].opsPerSec).toBe(8000)
+    expect(body.results[1].opsPerSec).toBe(9000)
+    expect(body.results[2].opsPerSec).toBe(10000)
+
+    await app.close()
+  })
+
+  it('should return correct next page with cursor pagination', async () => {
+    await seedMultipleBenchmarks(5)
+    const app = buildApp()
+
+    // First page with pageSize=2
+    const res1 = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/history/ms-bench-1?pageSize=2',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res1.statusCode).toBe(200)
+    const page1 = res1.json()
+    expect(page1.results).toHaveLength(2)
+    expect(page1.nextCursor).not.toBeNull()
+    expect(page1.totalCount).toBe(5)
+
+    // Second page using cursor
+    const res2 = await app.inject({
+      method: 'GET',
+      url: `/benchmark-results/history/ms-bench-1?afterCursor=${page1.nextCursor}&pageSize=2`,
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res2.statusCode).toBe(200)
+    const page2 = res2.json()
+    expect(page2.results).toHaveLength(2)
+    expect(page2.nextCursor).not.toBeNull()
+    // Entries should continue chronologically
+    expect(page2.results[0].opsPerSec).toBeGreaterThan(page1.results[1].opsPerSec)
+
+    await app.close()
+  })
+
+  it('should return nextCursor: null when no more results', async () => {
+    await seedMultipleBenchmarks(2)
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/history/ms-bench-1?pageSize=20',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.results).toHaveLength(2)
+    expect(body.nextCursor).toBeNull()
+
+    await app.close()
+  })
+
+  it('should return totalCount matching actual result count', async () => {
+    await seedMultipleBenchmarks(7)
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/history/ms-bench-1?pageSize=3',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.totalCount).toBe(7)
+    expect(body.results).toHaveLength(3)
+
+    await app.close()
+  })
+
+  it('should return empty results array when no benchmarks exist', async () => {
+    await seedData()
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/history/ms-bench-1',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.results).toEqual([])
+    expect(body.nextCursor).toBeNull()
+    expect(body.totalCount).toBe(0)
+
+    await app.close()
+  })
+
+  it('should respect pageSize limit (default 20, max 50)', async () => {
+    await seedMultipleBenchmarks(3)
+    const app = buildApp()
+
+    // Test max clamping
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/history/ms-bench-1?pageSize=100',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    // Should still return results (clamped to 50)
+    expect(body.results).toHaveLength(3)
+
+    await app.close()
+  })
+
+  it('should return 401 for unauthenticated request', async () => {
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/history/ms-bench-1',
+      // No authorization header
+    })
+
+    expect(res.statusCode).toBe(401)
+
+    await app.close()
+  })
+})

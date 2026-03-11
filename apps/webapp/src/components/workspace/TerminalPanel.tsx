@@ -9,6 +9,7 @@ import { ErrorPresentation } from './ErrorPresentation'
 import { MilestoneBrief } from './MilestoneBrief'
 import { ConceptExplainers } from './ConceptExplainers'
 import { BenchmarkHeroDisplay } from './BenchmarkHeroDisplay'
+import { BenchmarkHistoryList } from './BenchmarkHistoryList'
 import type { BenchmarkResultData } from '../../hooks/use-submit-code'
 
 type OutputLine =
@@ -31,30 +32,38 @@ interface TerminalPanelProps {
   readonly benchmarkResult?: BenchmarkResultData | null
   readonly isBenchmarking?: boolean
   readonly previousBenchmarkOpsPerSec?: number | null
+  readonly milestoneId?: string
 }
 
 const TAB_LABELS: Record<string, string> = {
   brief: 'Brief',
   diagrams: 'Diagrams',
   output: 'Output',
+  history: 'History',
   criteria: 'Criteria',
 }
 
-function TerminalPanel({ outputLines, isRunning, onRetry, brief, criteria, criteriaResults, allCriteriaMet, onCompleteMilestone, conceptExplainerAssets, benchmarkResult, isBenchmarking, previousBenchmarkOpsPerSec }: TerminalPanelProps): React.ReactElement {
+function TerminalPanel({ outputLines, isRunning, onRetry, brief, criteria, criteriaResults, allCriteriaMet, onCompleteMilestone, conceptExplainerAssets, benchmarkResult, isBenchmarking, previousBenchmarkOpsPerSec, milestoneId }: TerminalPanelProps): React.ReactElement {
   const benchmarkProgress = useBenchmarkProgress(isBenchmarking ?? false)
   const activeTab = useWorkspaceUIStore((s) => s.activeTerminalTab)
   const setActiveTab = useWorkspaceUIStore((s) => s.setActiveTerminalTab)
   const scrollRef = useAutoScroll([outputLines])
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 
-  const visibleTabs = conceptExplainerAssets.length > 0
-    ? (['brief', 'diagrams', 'output', 'criteria'] as const)
-    : (['brief', 'output', 'criteria'] as const)
+  const visibleTabs = [
+    'brief' as const,
+    ...(conceptExplainerAssets.length > 0 ? ['diagrams' as const] : []),
+    'output' as const,
+    ...(milestoneId ? ['history' as const] : []),
+    'criteria' as const,
+  ]
 
-  // If active tab is diagrams but no assets exist, fall back to brief
+  // If active tab is not visible, fall back
   const effectiveTab = activeTab === 'diagrams' && conceptExplainerAssets.length === 0
     ? 'brief'
-    : activeTab
+    : activeTab === 'history' && !milestoneId
+      ? 'output'
+      : activeTab
 
   function handleTabKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     const currentIndex = visibleTabs.indexOf(effectiveTab as typeof visibleTabs[number])
@@ -127,6 +136,8 @@ function TerminalPanel({ outputLines, isRunning, onRetry, brief, criteria, crite
           )
         ) : effectiveTab === 'diagrams' ? (
           <ConceptExplainers assets={conceptExplainerAssets} />
+        ) : effectiveTab === 'history' ? (
+          <BenchmarkHistoryList milestoneId={milestoneId} />
         ) : effectiveTab === 'output' ? (
           <ScrollArea className="h-full" viewportRef={scrollRef}>
             <OutputContent outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} />

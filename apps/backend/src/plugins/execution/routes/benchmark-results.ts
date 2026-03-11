@@ -80,6 +80,76 @@ export async function benchmarkResultsRoutes(
     },
   )
 
+  fastify.get<{
+    Params: { milestoneId: string }
+    Querystring: { afterCursor?: string; pageSize?: string }
+  }>(
+    '/benchmark-results/history/:milestoneId',
+    async (request) => {
+      const { milestoneId } = request.params
+      const uid = request.uid
+      const pageSize = Math.min(Math.max(Number(request.query.pageSize) || 20, 1), 50)
+      const { afterCursor } = request.query
+
+      let query = db
+        .selectFrom('benchmark_results')
+        .select([
+          'id',
+          'submission_id',
+          'benchmark_name',
+          'raw_metrics',
+          'normalized_ratio',
+          'reference_version',
+          'created_at',
+        ])
+        .where('user_id', '=', uid)
+        .where('milestone_id', '=', milestoneId)
+
+      if (afterCursor) {
+        const cursorResult = await db
+          .selectFrom('benchmark_results')
+          .select('created_at')
+          .where('id', '=', afterCursor)
+          .executeTakeFirst()
+
+        if (cursorResult) {
+          query = query.where((eb) =>
+            eb.or([
+              eb('created_at', '>', cursorResult.created_at),
+              eb.and([
+                eb('created_at', '=', cursorResult.created_at),
+                eb('id', '>', afterCursor),
+              ]),
+            ]),
+          )
+        }
+      }
+
+      const rows = await query
+        .orderBy('created_at', 'asc')
+        .orderBy('id', 'asc')
+        .limit(pageSize + 1)
+        .execute()
+
+      const hasMore = rows.length > pageSize
+      const resultRows = hasMore ? rows.slice(0, pageSize) : rows
+
+      const countResult = await db
+        .selectFrom('benchmark_results')
+        .select(db.fn.countAll<number>().as('count'))
+        .where('user_id', '=', uid)
+        .where('milestone_id', '=', milestoneId)
+        .executeTakeFirstOrThrow()
+
+      const lastRow = resultRows[resultRows.length - 1]
+      return {
+        results: resultRows.map((row) => mapBenchmarkRow(row)),
+        nextCursor: hasMore && lastRow ? lastRow.id : null,
+        totalCount: Number(countResult.count),
+      }
+    },
+  )
+
   fastify.get<{ Params: { milestoneId: string } }>(
     '/benchmark-results/latest/:milestoneId',
     async (request, reply) => {

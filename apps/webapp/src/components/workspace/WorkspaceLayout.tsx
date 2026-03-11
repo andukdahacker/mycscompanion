@@ -36,6 +36,7 @@ interface WorkspaceLayoutProps {
   readonly benchmarkResult?: BenchmarkResultData | null
   readonly isBenchmarking?: boolean
   readonly previousBenchmarkOpsPerSec?: number | null
+  readonly milestoneId?: string
   readonly sessionId: string | null
   readonly isStage1?: boolean
   readonly interventionStreamingContent?: string
@@ -61,6 +62,7 @@ function WorkspaceLayout({
   benchmarkResult,
   isBenchmarking,
   previousBenchmarkOpsPerSec,
+  milestoneId,
   sessionId,
   isStage1,
   interventionStreamingContent,
@@ -163,7 +165,7 @@ function WorkspaceLayout({
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize="30%" minSize="120px">
-              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} conceptExplainerAssets={conceptExplainerAssets} benchmarkResult={benchmarkResult} isBenchmarking={isBenchmarking} previousBenchmarkOpsPerSec={previousBenchmarkOpsPerSec} />
+              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} conceptExplainerAssets={conceptExplainerAssets} benchmarkResult={benchmarkResult} isBenchmarking={isBenchmarking} previousBenchmarkOpsPerSec={previousBenchmarkOpsPerSec} milestoneId={milestoneId} />
             </ResizablePanel>
           </ResizablePanelGroup>
 
@@ -218,7 +220,7 @@ function WorkspaceLayout({
             </ResizablePanel>
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize="30%" minSize="120px">
-              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} conceptExplainerAssets={conceptExplainerAssets} benchmarkResult={benchmarkResult} isBenchmarking={isBenchmarking} previousBenchmarkOpsPerSec={previousBenchmarkOpsPerSec} />
+              <TerminalPanel outputLines={outputLines} isRunning={isRunning} onRetry={onRetry} brief={brief} criteria={criteria} criteriaResults={criteriaResults} allCriteriaMet={allCriteriaMet} onCompleteMilestone={onCompleteMilestone} conceptExplainerAssets={conceptExplainerAssets} benchmarkResult={benchmarkResult} isBenchmarking={isBenchmarking} previousBenchmarkOpsPerSec={previousBenchmarkOpsPerSec} milestoneId={milestoneId} />
             </ResizablePanel>
           </ResizablePanelGroup>
         </ResizablePanel>
