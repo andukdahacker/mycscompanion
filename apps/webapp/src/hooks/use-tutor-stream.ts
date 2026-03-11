@@ -129,6 +129,25 @@ function useTutorStream(
             return
           }
 
+          if (response.status === 503) {
+            const retryAfterHeader = response.headers.get('retry-after')
+            const retryAfter = retryAfterHeader ? parseInt(retryAfterHeader, 10) || undefined : undefined
+            const body: unknown = await response.json().catch(() => ({}))
+            const errorCode = typeof body === 'object' && body !== null && 'error' in body
+              ? ((body as { error: { code?: string } }).error.code ?? 'TUTOR_UNAVAILABLE')
+              : 'TUTOR_UNAVAILABLE'
+            if (errorCode === 'TUTOR_UNAVAILABLE') {
+              useWorkspaceUIStore.getState().setTutorAvailable(false)
+            }
+            setError({
+              type: 'error',
+              code: errorCode,
+              message: parseErrorBody(body, 'Tutor temporarily unavailable'),
+              retryAfter,
+            })
+            return
+          }
+
           const body: unknown = await response.json().catch(() => ({}))
           setError({ type: 'error', code: 'REQUEST_ERROR', message: parseErrorBody(body, 'Request failed') })
           return
@@ -180,6 +199,9 @@ function useTutorStream(
                     }
                   },
                 )
+
+                // Restore tutor availability on success
+                useWorkspaceUIStore.getState().setTutorAvailable(true)
 
                 // Announce to screen reader (strip explainer refs for readable text)
                 announceToScreenReader(stripExplainerRefsForA11y(event.content, assetsMapRef.current))

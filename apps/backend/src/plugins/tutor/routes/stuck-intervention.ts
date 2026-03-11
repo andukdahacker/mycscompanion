@@ -5,6 +5,10 @@ import type { TutorStreamEvent } from '@mycscompanion/shared'
 import type { RateLimitChecker } from '../../../shared/rate-limiter.js'
 import type { AnthropicService, AnthropicMessageStream } from '../services/anthropic.js'
 import type { StuckContextAssembler } from '../services/stuck-context-assembler.js'
+import type { CircuitBreaker } from '../services/circuit-breaker.js'
+import type { TutorMetrics } from '../services/tutor-metrics.js'
+import { CircuitOpenError } from '../services/circuit-breaker.js'
+import { classifyError } from '../services/anthropic.js'
 import { loadConversationHistory } from '../services/conversation-history.js'
 import { generateId } from '../../../shared/id.js'
 import * as Sentry from '@sentry/node'
@@ -17,6 +21,8 @@ export type StuckInterventionRoutesOptions = {
   readonly anthropicService: AnthropicService
   readonly stuckContextAssembler: StuckContextAssembler
   readonly rateLimiter: RateLimitChecker
+  readonly circuitBreaker: CircuitBreaker
+  readonly tutorMetrics: TutorMetrics | null
 }
 
 const stuckInterventionSchema = {
@@ -45,7 +51,7 @@ export async function stuckInterventionRoutes(
   fastify: FastifyInstance,
   opts: StuckInterventionRoutesOptions
 ): Promise<void> {
-  const { db, anthropicService, stuckContextAssembler, rateLimiter } = opts
+  const { db, anthropicService, stuckContextAssembler, rateLimiter, circuitBreaker, tutorMetrics } = opts
 
   fastify.post<{ Params: { sessionId: string }; Body: { timeStuckMinutes: number } }>(
     '/:sessionId/stuck-intervention',
@@ -128,6 +134,7 @@ export async function stuckInterventionRoutes(
         isStuckIntervention: true,
       }
 
+      const requestStartTime = Date.now()
       let stream: AnthropicMessageStream
       try {
         stream = anthropicService.createStreamingTutorResponse({
@@ -136,10 +143,39 @@ export async function stuckInterventionRoutes(
           context,
         })
       } catch (error) {
-        Sentry.captureException(error)
-        return reply.status(503).send({
-          error: { code: 'TUTOR_UNAVAILABLE', message: 'Tutor is temporarily unavailable' },
+        if (error instanceof CircuitOpenError) {
+          await tutorMetrics?.recordFailure('circuit_open')
+          request.log.info({ event: 'tutor_request', success: false, durationMs: Date.now() - requestStartTime, errorType: 'circuit_open' }, 'tutor_request')
+          return reply
+            .status(503)
+            .header('Retry-After', String(Math.ceil(error.retryAfterMs / 1000)))
+            .send({
+              error: {
+                code: 'TUTOR_UNAVAILABLE',
+                message: 'AI tutor temporarily unavailable',
+                retryAfter: Math.ceil(error.retryAfterMs / 1000),
+              },
+            })
+        }
+        const errorType = classifyError(error)
+        await tutorMetrics?.recordFailure(errorType)
+        const logLevel = errorType === 'rate_limit' || errorType === 'overloaded' || errorType === 'timeout' ? 'warn' : 'error'
+        request.log[logLevel]({ event: 'tutor_request', success: false, durationMs: Date.now() - requestStartTime, errorType }, 'tutor_request')
+        Sentry.captureException(error, {
+          tags: { tutor_error_type: errorType },
+          extra: { circuitState: circuitBreaker.state },
         })
+        const retryAfter = circuitBreaker.retryAfterSeconds()
+        return reply
+          .status(503)
+          .header('Retry-After', String(retryAfter ?? 30))
+          .send({
+            error: {
+              code: 'TUTOR_UNAVAILABLE',
+              message: 'Tutor is temporarily unavailable',
+              retryAfter: retryAfter ?? 30,
+            },
+          })
       }
 
       // 8. Set SSE headers
@@ -198,6 +234,9 @@ export async function stuckInterventionRoutes(
           content: fullText,
         })
 
+        await tutorMetrics?.recordSuccess()
+        request.log.info({ event: 'tutor_request', success: true, model: finalMessage.model, durationMs: Date.now() - requestStartTime }, 'tutor_request')
+
         try {
           await db
             .insertInto('tutor_messages')
@@ -222,7 +261,16 @@ export async function stuckInterventionRoutes(
       stream.on('error', (error: Error) => {
         if (isClosed) return
 
-        Sentry.captureException(error)
+        const errorType = classifyError(error)
+        const logLevel = errorType === 'rate_limit' || errorType === 'overloaded' || errorType === 'timeout' ? 'warn' : 'error'
+        request.log[logLevel]({ event: 'tutor_request', success: false, durationMs: Date.now() - requestStartTime, errorType }, 'tutor_request')
+
+        Sentry.captureException(error, {
+          tags: { tutor_error_type: errorType },
+          extra: { circuitState: circuitBreaker.state },
+        })
+
+        tutorMetrics?.recordFailure(errorType)
 
         writeSSE(reply.raw, {
           type: 'error',

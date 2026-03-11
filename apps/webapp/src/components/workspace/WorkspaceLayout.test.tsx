@@ -404,4 +404,52 @@ describe('WorkspaceLayout', () => {
       expect(retryButtons.length).toBeGreaterThanOrEqual(1)
     })
   })
+
+  describe('graceful degradation', () => {
+    it('should render editor, terminal, and criteria panels when tutorAvailable is false', () => {
+      useWorkspaceUIStore.setState({ tutorAvailable: false })
+
+      render(<WorkspaceLayout {...defaultProps} />)
+
+      expect(screen.getByTestId('code-editor')).toBeInTheDocument()
+      expect(screen.getByTestId('terminal-panel')).toBeInTheDocument()
+      // TutorPanel mock always renders — just shows unavailable message
+      expect(screen.getByTestId('tutor-chat-mock')).toBeInTheDocument()
+    })
+
+    it('should still pass correct props to editor when tutor is unavailable', () => {
+      useWorkspaceUIStore.setState({ tutorAvailable: false })
+
+      render(<WorkspaceLayout {...defaultProps} initialContent="test code" />)
+
+      const editor = screen.getByTestId('code-editor')
+      expect(editor).toHaveAttribute('data-initial-content', 'test code')
+    })
+
+    it('should still allow submission when tutor is unavailable', () => {
+      useWorkspaceUIStore.setState({ tutorAvailable: false })
+
+      render(<WorkspaceLayout {...defaultProps} />)
+
+      const runButton = screen.getByTestId('mock-run-trigger')
+      expect(runButton).toBeInTheDocument()
+
+      act(() => {
+        runButton.click()
+      })
+      expect(defaultProps.onRun).toHaveBeenCalled()
+    })
+
+    it('should show unavailable notice in mobile layout when tutorAvailable is false', () => {
+      setWindowWidth(600)
+      useWorkspaceUIStore.setState({ tutorAvailable: false, breakpointMode: 'mobile' })
+
+      render(<WorkspaceLayout {...defaultProps} />)
+
+      // TutorPanel should still be rendered (with readOnly in mobile)
+      const tutorMock = screen.getByTestId('tutor-chat-mock')
+      expect(tutorMock).toBeInTheDocument()
+      expect(tutorMock).toHaveAttribute('data-read-only', 'true')
+    })
+  })
 })

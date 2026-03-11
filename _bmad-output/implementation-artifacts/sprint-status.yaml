@@ -114,7 +114,7 @@ development_status:
   6-3-tutor-chat-ui-and-panel-integration: done
   6-4-two-stage-stuck-detection-and-proactive-intervention: done
   6-5-tutor-surfaced-concept-explainers: done
-  6-6-graceful-degradation-and-availability: backlog
+  6-6-graceful-degradation-and-availability: done
   epic-6-retrospective: optional
 
   # Epic 7: Benchmarks & Performance Narrative

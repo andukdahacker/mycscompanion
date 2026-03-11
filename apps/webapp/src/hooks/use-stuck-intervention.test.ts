@@ -18,11 +18,15 @@ vi.mock('../lib/api-fetch', () => ({
 
 // Mock workspace store
 const mockSetTutorAvailable = vi.fn()
+let mockTutorAvailable = true
 vi.mock('../stores/workspace-ui-store', () => ({
   useWorkspaceUIStore: Object.assign(
     () => ({}),
     {
-      getState: () => ({ setTutorAvailable: mockSetTutorAvailable }),
+      getState: () => ({
+        setTutorAvailable: mockSetTutorAvailable,
+        tutorAvailable: mockTutorAvailable,
+      }),
     },
   ),
 }))
@@ -68,6 +72,7 @@ describe('useStuckIntervention', () => {
     mockSetQueryData.mockClear()
     mockAnnounce.mockClear()
     mockSetTutorAvailable.mockClear()
+    mockTutorAvailable = true
   })
 
   afterEach(() => {
@@ -179,7 +184,6 @@ describe('useStuckIntervention', () => {
 
   it('should silently handle errors without UI error state', async () => {
     fetchSpy.mockRejectedValueOnce(new Error('Network failure'))
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
 
     const { result } = renderHook(() => useStuckIntervention('session-1'))
 
@@ -194,7 +198,6 @@ describe('useStuckIntervention', () => {
     // No error state exposed — hook just resets streaming
     expect(result.current.isInterventionStreaming).toBe(false)
     expect(result.current.interventionStreamingContent).toBe('')
-    expect(warnSpy).toHaveBeenCalled()
   })
 
   it('should prevent concurrent interventions', async () => {
@@ -260,6 +263,23 @@ describe('useStuckIntervention', () => {
     })
 
     expect(mockSetTutorAvailable).toHaveBeenCalledWith(false)
+    expect(result.current.isInterventionStreaming).toBe(false)
+  })
+
+  it('should not fire API call when tutorAvailable is false', async () => {
+    mockTutorAvailable = false
+
+    const { result } = renderHook(() => useStuckIntervention('session-1'))
+
+    await act(async () => {
+      result.current.triggerIntervention(5)
+    })
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50))
+    })
+
+    expect(fetchSpy).not.toHaveBeenCalled()
     expect(result.current.isInterventionStreaming).toBe(false)
   })
 

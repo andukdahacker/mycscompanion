@@ -235,6 +235,52 @@ describe('useTutorStream', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
+  it('should set tutorAvailable=true on successful message_complete', async () => {
+    const body = createSSEResponse([
+      { type: 'text_delta', delta: 'OK' },
+      { type: 'message_complete', id: 'msg-1', model: 'haiku', content: 'OK' },
+    ])
+
+    fetchSpy.mockResolvedValueOnce(new Response(body, { status: 200 }))
+
+    const { result } = renderHook(() => useTutorStream('session-1'))
+
+    await act(async () => {
+      result.current.sendMessage('test')
+    })
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50))
+    })
+
+    expect(mockSetTutorAvailable).toHaveBeenCalledWith(true)
+  })
+
+  it('should handle 503 with Retry-After header and set tutorAvailable false', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response(
+      JSON.stringify({ error: { code: 'TUTOR_UNAVAILABLE', message: 'AI tutor temporarily unavailable' } }),
+      {
+        status: 503,
+        headers: { 'retry-after': '30', 'content-type': 'application/json' },
+      },
+    ))
+
+    const { result } = renderHook(() => useTutorStream('session-1'))
+
+    await act(async () => {
+      result.current.sendMessage('test')
+    })
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50))
+    })
+
+    expect(result.current.error).not.toBeNull()
+    expect(result.current.error?.code).toBe('TUTOR_UNAVAILABLE')
+    expect(result.current.error?.retryAfter).toBe(30)
+    expect(mockSetTutorAvailable).toHaveBeenCalledWith(false)
+  })
+
   it('should handle TUTOR_UNAVAILABLE error and update store', async () => {
     const body = createSSEResponse([
       { type: 'error', code: 'TUTOR_UNAVAILABLE', message: 'Tutor is unavailable' },

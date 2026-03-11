@@ -5,6 +5,10 @@ import type { TutorStreamEvent } from '@mycscompanion/shared'
 import type { RateLimitChecker } from '../../../shared/rate-limiter.js'
 import type { AnthropicService, AnthropicMessageStream } from '../services/anthropic.js'
 import type { ContextAssembler } from '../services/context-assembler.js'
+import type { CircuitBreaker } from '../services/circuit-breaker.js'
+import type { TutorMetrics } from '../services/tutor-metrics.js'
+import { CircuitOpenError } from '../services/circuit-breaker.js'
+import { classifyError } from '../services/anthropic.js'
 import { loadConversationHistory } from '../services/conversation-history.js'
 import { generateId } from '../../../shared/id.js'
 import * as Sentry from '@sentry/node'
@@ -17,6 +21,8 @@ export type StreamRoutesOptions = {
   readonly anthropicService: AnthropicService
   readonly contextAssembler: ContextAssembler
   readonly rateLimiter: RateLimitChecker
+  readonly circuitBreaker: CircuitBreaker
+  readonly tutorMetrics: TutorMetrics | null
 }
 
 const streamSchema = {
@@ -44,7 +50,7 @@ export async function streamRoutes(
   fastify: FastifyInstance,
   opts: StreamRoutesOptions
 ): Promise<void> {
-  const { db, anthropicService, contextAssembler, rateLimiter } = opts
+  const { db, anthropicService, contextAssembler, rateLimiter, circuitBreaker, tutorMetrics } = opts
 
   fastify.post<{ Params: { sessionId: string }; Body: { message: string } }>(
     '/:sessionId/stream',
@@ -140,6 +146,7 @@ export async function streamRoutes(
 
       // 8. Start Anthropic stream
       const context = { userMessage: message, hasCompileErrors }
+      const requestStartTime = Date.now()
       let stream: AnthropicMessageStream
       try {
         stream = anthropicService.createStreamingTutorResponse({
@@ -148,16 +155,43 @@ export async function streamRoutes(
           context,
         })
       } catch (error) {
+        if (error instanceof CircuitOpenError) {
+          await tutorMetrics?.recordFailure('circuit_open')
+          request.log.info({ event: 'tutor_request', success: false, durationMs: Date.now() - requestStartTime, errorType: 'circuit_open' }, 'tutor_request')
+          return reply
+            .status(503)
+            .header('Retry-After', String(Math.ceil(error.retryAfterMs / 1000)))
+            .send({
+              error: {
+                code: 'TUTOR_UNAVAILABLE',
+                message: 'AI tutor temporarily unavailable',
+                retryAfter: Math.ceil(error.retryAfterMs / 1000),
+              },
+            })
+        }
+        const errorType = classifyError(error)
+        await tutorMetrics?.recordFailure(errorType)
+        const logLevel = errorType === 'rate_limit' || errorType === 'overloaded' || errorType === 'timeout' ? 'warn' : 'error'
+        request.log[logLevel]({ event: 'tutor_request', success: false, durationMs: Date.now() - requestStartTime, errorType }, 'tutor_request')
         Sentry.captureException(error, {
+          tags: { tutor_error_type: errorType },
           extra: {
             hasCompileErrors,
             messageLength: message.length,
-            errorType: error instanceof Error ? error.constructor.name : 'Unknown',
+            circuitState: circuitBreaker.state,
           },
         })
-        return reply.status(503).send({
-          error: { code: 'TUTOR_UNAVAILABLE', message: 'Tutor is temporarily unavailable' },
-        })
+        const retryAfter = circuitBreaker.retryAfterSeconds()
+        return reply
+          .status(503)
+          .header('Retry-After', String(retryAfter ?? 30))
+          .send({
+            error: {
+              code: 'TUTOR_UNAVAILABLE',
+              message: 'Tutor is temporarily unavailable',
+              retryAfter: retryAfter ?? 30,
+            },
+          })
       }
 
       // 9. Set SSE headers — bypass Fastify pipeline
@@ -228,6 +262,16 @@ export async function streamRoutes(
           output_tokens: usage.output_tokens,
         }, 'tutor_prompt_cache_metrics')
 
+        // Record success metric
+        await tutorMetrics?.recordSuccess()
+
+        request.log.info({
+          event: 'tutor_request',
+          success: true,
+          model: finalMessage.model,
+          durationMs: Date.now() - requestStartTime,
+        }, 'tutor_request')
+
         // Persist assistant message (best-effort — don't block client)
         try {
           await db
@@ -253,13 +297,25 @@ export async function streamRoutes(
       stream.on('error', (error: Error) => {
         if (isClosed) return
 
+        const errorType = classifyError(error)
+        const logLevel = errorType === 'rate_limit' || errorType === 'overloaded' || errorType === 'timeout' ? 'warn' : 'error'
+        request.log[logLevel]({
+          event: 'tutor_request',
+          success: false,
+          durationMs: Date.now() - requestStartTime,
+          errorType,
+        }, 'tutor_request')
+
         Sentry.captureException(error, {
+          tags: { tutor_error_type: errorType },
           extra: {
             hasCompileErrors,
             messageLength: message.length,
-            errorType: error.constructor.name,
+            circuitState: circuitBreaker.state,
           },
         })
+
+        tutorMetrics?.recordFailure(errorType)
 
         writeSSE(reply.raw, {
           type: 'error',

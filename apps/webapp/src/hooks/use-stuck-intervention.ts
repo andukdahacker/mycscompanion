@@ -32,6 +32,10 @@ function useStuckIntervention(
     (timeStuckMinutes: number) => {
       if (!sessionId || isStreamingRef.current) return
 
+      // Skip intervention when tutor is unavailable (AC #3)
+      const { tutorAvailable } = useWorkspaceUIStore.getState()
+      if (!tutorAvailable) return
+
       isStreamingRef.current = true
       setIsInterventionStreaming(true)
       setInterventionStreamingContent('')
@@ -62,7 +66,7 @@ function useStuckIntervention(
           })
         } catch (err: unknown) {
           if (err instanceof DOMException && err.name === 'AbortError') return
-          console.warn('Stuck intervention network error:', err)
+          // Network errors during stuck intervention are expected when tutor is down — silently ignore
           isStreamingRef.current = false
           setIsInterventionStreaming(false)
           setInterventionStreamingContent('')
@@ -174,7 +178,7 @@ function useStuckIntervention(
           }
         } catch (err: unknown) {
           if (err instanceof DOMException && err.name === 'AbortError') return
-          console.warn('Stuck intervention stream error:', err)
+          // Stream errors during stuck intervention are expected when tutor is down — silently ignore
           isStreamingRef.current = false
           setIsInterventionStreaming(false)
           setInterventionStreamingContent('')

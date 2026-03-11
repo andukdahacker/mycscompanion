@@ -7,13 +7,18 @@ import type { RateLimitChecker } from '../../shared/rate-limiter.js'
 import type { AnthropicService, AnthropicClient } from './services/anthropic.js'
 import type { ContextAssembler } from './services/context-assembler.js'
 import type { StuckContextAssembler } from './services/stuck-context-assembler.js'
+import type { CircuitBreaker } from './services/circuit-breaker.js'
 import { createAnthropicService } from './services/anthropic.js'
 import { createContextAssembler } from './services/context-assembler.js'
 import { createStuckContextAssembler } from './services/stuck-context-assembler.js'
+import { withCircuitBreaker, createCircuitBreaker } from './services/circuit-breaker.js'
+import type { TutorMetrics } from './services/tutor-metrics.js'
+import { createTutorMetrics } from './services/tutor-metrics.js'
 import { messageRoutes } from './routes/message.js'
 import { historyRoutes } from './routes/history.js'
 import { streamRoutes } from './routes/stream.js'
 import { stuckInterventionRoutes } from './routes/stuck-intervention.js'
+import { healthRoutes } from './routes/health.js'
 
 export interface TutorPluginOptions {
   readonly db?: Kysely<DB>
@@ -26,6 +31,8 @@ export interface TutorPluginOptions {
   readonly anthropicService?: AnthropicService
   readonly contextAssembler?: ContextAssembler
   readonly stuckContextAssembler?: StuckContextAssembler
+  readonly circuitBreaker?: CircuitBreaker
+  readonly tutorMetrics?: TutorMetrics
 }
 
 const unavailableService: AnthropicService = {
@@ -44,9 +51,17 @@ export async function tutorPlugin(
   const db = opts.db ?? defaultDb
 
   // Use injected services, create from client, or fall back to unavailable stub
-  const anthropicService =
+  const circuitBreaker = opts.circuitBreaker ?? createCircuitBreaker()
+
+  const baseService =
     opts.anthropicService ??
     (opts.anthropicClient ? createAnthropicService(opts.anthropicClient) : unavailableService)
+
+  // Wrap with circuit breaker (keeps anthropic.ts unchanged)
+  const anthropicService = withCircuitBreaker(baseService, circuitBreaker)
+
+  // Metrics (requires Redis)
+  const tutorMetrics = opts.tutorMetrics ?? (opts.redis ? createTutorMetrics(opts.redis) : null)
 
   let contextAssembler: ContextAssembler
   let stuckContextAssembler: StuckContextAssembler | null = null
@@ -81,6 +96,8 @@ export async function tutorPlugin(
     anthropicService,
     contextAssembler,
     rateLimiter: opts.rateLimiter,
+    circuitBreaker,
+    tutorMetrics,
   })
 
   await fastify.register(historyRoutes, { db })
@@ -90,6 +107,8 @@ export async function tutorPlugin(
     anthropicService,
     contextAssembler,
     rateLimiter: opts.rateLimiter,
+    circuitBreaker,
+    tutorMetrics,
   })
 
   if (stuckContextAssembler !== null) {
@@ -99,6 +118,10 @@ export async function tutorPlugin(
       anthropicService,
       stuckContextAssembler: assembler,
       rateLimiter: opts.rateLimiter,
+      circuitBreaker,
+      tutorMetrics,
     })
   }
+
+  await fastify.register(healthRoutes, { circuitBreaker, tutorMetrics })
 }

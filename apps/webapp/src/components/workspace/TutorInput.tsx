@@ -13,13 +13,15 @@ function TutorInput({ onSend, isStreaming, error, onClearError }: TutorInputProp
   const [rateLimitCountdown, setRateLimitCountdown] = useState<number | null>(null)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Handle rate limit countdown
+  // Handle rate limit / unavailable countdown
   useEffect(() => {
-    if (!error || error.code !== 'RATE_LIMITED' || !error.retryAfter) {
+    const hasCountdown = error && (error.code === 'RATE_LIMITED' || error.code === 'TUTOR_UNAVAILABLE') && error.retryAfter
+    if (!hasCountdown) {
       setRateLimitCountdown(null)
       if (countdownRef.current) clearInterval(countdownRef.current)
       return
     }
+    if (!error || !error.retryAfter) return
 
     const retryAfter = error.retryAfter
 
@@ -77,9 +79,11 @@ function TutorInput({ onSend, isStreaming, error, onClearError }: TutorInputProp
         <div className="mt-1.5 flex items-center justify-between text-xs text-destructive">
           <span>
             {error.message}
-            {rateLimitCountdown !== null && ` (retry in ${rateLimitCountdown}s)`}
+            {rateLimitCountdown !== null && (error.code === 'TUTOR_UNAVAILABLE'
+              ? ` (available in ~${rateLimitCountdown}s)`
+              : ` (retry in ${rateLimitCountdown}s)`)}
           </span>
-          {error.code !== 'RATE_LIMITED' && (
+          {error.code !== 'RATE_LIMITED' && error.code !== 'TUTOR_UNAVAILABLE' && (
             <button
               onClick={onClearError}
               className="ml-2 text-xs text-muted-foreground hover:text-foreground"

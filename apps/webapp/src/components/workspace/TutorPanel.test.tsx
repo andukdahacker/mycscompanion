@@ -43,6 +43,11 @@ vi.mock('../../hooks/use-tutor-stream', () => ({
   useTutorStream: (...args: unknown[]) => mockUseTutorStream(...args),
 }))
 
+// Mock useTutorRecovery
+vi.mock('../../hooks/use-tutor-recovery', () => ({
+  useTutorRecovery: vi.fn(),
+}))
+
 function renderTutorPanel(props: { sessionId: string | null; readOnly?: boolean }) {
   const queryClient = createTestQueryClient()
   return render(
@@ -220,6 +225,33 @@ describe('TutorPanel', () => {
 
     expect(screen.getByText('Key-Value Store Operations')).toBeInTheDocument()
     expect(screen.getByText('View diagram')).toBeInTheDocument()
+  })
+
+  it('should show retrying automatically message when tutor is unavailable', () => {
+    useWorkspaceUIStore.setState({ tutorAvailable: false })
+
+    renderTutorPanel({ sessionId: 'session-1' })
+
+    expect(screen.getByText(/retrying automatically/i)).toBeInTheDocument()
+  })
+
+  it('should show recovery message on availability transition', async () => {
+    useWorkspaceUIStore.setState({ tutorAvailable: false })
+    const { rerender } = render(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <TutorPanel sessionId="session-1" />
+      </QueryClientProvider>,
+    )
+
+    // Simulate recovery
+    useWorkspaceUIStore.setState({ tutorAvailable: true })
+    rerender(
+      <QueryClientProvider client={createTestQueryClient()}>
+        <TutorPanel sessionId="session-1" />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByText('Tutor is back')).toBeInTheDocument()
   })
 
   it('should not send empty or whitespace-only messages', () => {

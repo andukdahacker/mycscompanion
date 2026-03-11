@@ -13,22 +13,19 @@ export interface AnthropicMessageStream {
   on(event: 'error', handler: (error: Error) => void): AnthropicMessageStream
 }
 
+export type AnthropicRequestBody = {
+  model: string
+  max_tokens: number
+  system: string
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>
+}
+
 export interface AnthropicClient {
   readonly messages: {
-    create(body: {
-      model: string
-      max_tokens: number
-      system: string
-      messages: Array<{ role: 'user' | 'assistant'; content: string }>
-    }): Promise<{
+    create(body: AnthropicRequestBody, options?: { signal?: AbortSignal }): Promise<{
       content: Array<{ type: string; text?: string }>
     }>
-    stream(body: {
-      model: string
-      max_tokens: number
-      system: string
-      messages: Array<{ role: 'user' | 'assistant'; content: string }>
-    }): AnthropicMessageStream
+    stream(body: AnthropicRequestBody, options?: { signal?: AbortSignal }): AnthropicMessageStream
   }
 }
 
@@ -51,6 +48,9 @@ const SONNET_MODEL: TutorModel = 'claude-sonnet-4-6-20250514'
 
 const EXPLAIN_PATTERNS = /\b(explain|what is|how does|why does|what happens|how would)\b/i
 
+const TTFT_TIMEOUT_MS = Number(process.env['MCC_TUTOR_TTFT_TIMEOUT_MS']) || 30_000
+const STREAM_TIMEOUT_MS = Number(process.env['MCC_TUTOR_STREAM_TIMEOUT_MS']) || 120_000
+
 export function selectModel(context: TutorContext): TutorModel {
   if (context.isStuckIntervention) return SONNET_MODEL
   if (context.hasCompileErrors) return SONNET_MODEL
@@ -66,41 +66,104 @@ export interface AnthropicService {
   createStreamingTutorResponse(params: TutorRequestParams): AnthropicMessageStream
 }
 
+export type TutorErrorType = 'rate_limit' | 'overloaded' | 'auth_error' | 'timeout' | 'network_error' | 'api_error'
+
+export function classifyError(error: unknown): TutorErrorType {
+  if (error instanceof Error && error.name === 'AbortError') return 'timeout'
+
+  // Anthropic SDK errors have a `status` property
+  const status = typeof error === 'object' && error !== null && 'status' in error
+    ? (error as { status: number }).status
+    : undefined
+  if (status === 429) return 'rate_limit'
+  if (status === 529) return 'overloaded'
+  if (status === 401) return 'auth_error'
+  if (typeof status === 'number' && status >= 500) return 'api_error'
+
+  // Network-level errors
+  if (error instanceof TypeError && error.message.includes('fetch')) return 'network_error'
+  if (error instanceof Error && (error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND') || error.message.includes('ETIMEDOUT'))) return 'network_error'
+
+  return 'api_error'
+}
+
 export function createAnthropicService(client: AnthropicClient): AnthropicService {
   return {
     async createTutorResponse(params: TutorRequestParams) {
       const model = selectModel(params.context)
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), TTFT_TIMEOUT_MS)
 
-      const response = await client.messages.create({
-        model,
-        max_tokens: 1024,
-        system: params.systemPrompt,
-        messages: params.conversationHistory.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        })),
-      })
+      try {
+        const response = await client.messages.create(
+          {
+            model,
+            max_tokens: 1024,
+            system: params.systemPrompt,
+            messages: params.conversationHistory.map((msg) => ({
+              role: msg.role,
+              content: msg.content,
+            })),
+          },
+          { signal: controller.signal }
+        )
 
-      const textBlock = response.content.find((block): block is { type: string; text: string } =>
-        block.type === 'text' && typeof block.text === 'string'
-      )
-      const content = textBlock?.text ?? ''
+        const textBlock = response.content.find((block): block is { type: string; text: string } =>
+          block.type === 'text' && typeof block.text === 'string'
+        )
+        const content = textBlock?.text ?? ''
 
-      return { content, model }
+        return { content, model }
+      } finally {
+        clearTimeout(timeout)
+      }
     },
 
     createStreamingTutorResponse(params: TutorRequestParams) {
       const model = selectModel(params.context)
+      const controller = new AbortController()
+      const ttftTimeout = setTimeout(() => controller.abort(), TTFT_TIMEOUT_MS)
 
-      return client.messages.stream({
-        model,
-        max_tokens: 1024,
-        system: params.systemPrompt,
-        messages: params.conversationHistory.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        })),
+      const stream = client.messages.stream(
+        {
+          model,
+          max_tokens: 1024,
+          system: params.systemPrompt,
+          messages: params.conversationHistory.map((msg) => ({
+            role: msg.role,
+            content: msg.content,
+          })),
+        },
+        { signal: controller.signal }
+      )
+
+      // Once first text arrives, switch to total stream timeout
+      let receivedFirstText = false
+      let streamTimeout: ReturnType<typeof setTimeout> | null = null
+
+      const originalOn = stream.on.bind(stream)
+
+      // Intercept 'text' event to track TTFT and set stream timeout
+      originalOn('text', () => {
+        if (!receivedFirstText) {
+          receivedFirstText = true
+          clearTimeout(ttftTimeout)
+          streamTimeout = setTimeout(() => controller.abort(), STREAM_TIMEOUT_MS)
+        }
       })
+
+      // Clean up timeouts on completion or error
+      originalOn('finalMessage', () => {
+        clearTimeout(ttftTimeout)
+        if (streamTimeout) clearTimeout(streamTimeout)
+      })
+
+      originalOn('error', () => {
+        clearTimeout(ttftTimeout)
+        if (streamTimeout) clearTimeout(streamTimeout)
+      })
+
+      return stream
     },
   }
 }

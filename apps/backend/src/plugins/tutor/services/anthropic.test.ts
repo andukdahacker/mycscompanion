@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { selectModel, createAnthropicService } from './anthropic.js'
+import { selectModel, createAnthropicService, classifyError } from './anthropic.js'
 import type { TutorContext, TutorRequestParams, AnthropicClient, AnthropicMessageStream } from './anthropic.js'
 
 function createMockClient(overrides: {
@@ -122,12 +122,15 @@ describe('createAnthropicService', () => {
 
       expect(result.content).toBe('What do you think happens when the process exits?')
       expect(result.model).toBe('claude-haiku-4-5-20251001')
-      expect(mockCreate).toHaveBeenCalledWith({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
-        system: 'You are a tutor',
-        messages: [{ role: 'user', content: 'I need help' }],
-      })
+      expect(mockCreate).toHaveBeenCalledWith(
+        {
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1024,
+          system: 'You are a tutor',
+          messages: [{ role: 'user', content: 'I need help' }],
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      )
     })
 
     it('should select Sonnet when compile errors are present', async () => {
@@ -148,7 +151,8 @@ describe('createAnthropicService', () => {
       await service.createTutorResponse(params)
 
       expect(mockCreate).toHaveBeenCalledWith(
-        expect.objectContaining({ model: 'claude-sonnet-4-6-20250514' })
+        expect.objectContaining({ model: 'claude-sonnet-4-6-20250514' }),
+        expect.anything(),
       )
     })
 
@@ -201,12 +205,15 @@ describe('createAnthropicService', () => {
 
       service.createStreamingTutorResponse(params)
 
-      expect(mockStreamFn).toHaveBeenCalledWith({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
-        system: 'You are a tutor',
-        messages: [{ role: 'user', content: 'Help me' }],
-      })
+      expect(mockStreamFn).toHaveBeenCalledWith(
+        {
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1024,
+          system: 'You are a tutor',
+          messages: [{ role: 'user', content: 'Help me' }],
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      )
     })
 
     it('should select Sonnet when compile errors are present', () => {
@@ -223,7 +230,8 @@ describe('createAnthropicService', () => {
       service.createStreamingTutorResponse(params)
 
       expect(mockStreamFn).toHaveBeenCalledWith(
-        expect.objectContaining({ model: 'claude-sonnet-4-6-20250514' })
+        expect.objectContaining({ model: 'claude-sonnet-4-6-20250514' }),
+        expect.anything(),
       )
     })
 
@@ -260,5 +268,37 @@ describe('createAnthropicService', () => {
         })
       )
     })
+  })
+})
+
+describe('classifyError', () => {
+  it('should classify Anthropic 429 errors as rate_limit', () => {
+    const error = Object.assign(new Error('Rate limited'), { status: 429 })
+    expect(classifyError(error)).toBe('rate_limit')
+  })
+
+  it('should classify Anthropic 529 errors as overloaded', () => {
+    const error = Object.assign(new Error('Overloaded'), { status: 529 })
+    expect(classifyError(error)).toBe('overloaded')
+  })
+
+  it('should classify timeout errors as timeout', () => {
+    const error = new Error('Aborted')
+    error.name = 'AbortError'
+    expect(classifyError(error)).toBe('timeout')
+  })
+
+  it('should classify Anthropic 401 errors as auth_error', () => {
+    const error = Object.assign(new Error('Unauthorized'), { status: 401 })
+    expect(classifyError(error)).toBe('auth_error')
+  })
+
+  it('should classify ECONNREFUSED as network_error', () => {
+    const error = new Error('connect ECONNREFUSED 127.0.0.1:443')
+    expect(classifyError(error)).toBe('network_error')
+  })
+
+  it('should classify unknown errors as api_error', () => {
+    expect(classifyError(new Error('something'))).toBe('api_error')
   })
 })
