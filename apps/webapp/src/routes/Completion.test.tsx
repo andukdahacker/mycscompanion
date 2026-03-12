@@ -66,11 +66,22 @@ describe('Completion', () => {
     )
   }
 
+  const MOCK_TRAJECTORY = {
+    dataPoints: [
+      { milestoneId: 'ms-1', milestoneName: 'KV Store', milestoneNumber: 1, benchmarkName: 'sequential-inserts', bestOpsPerSec: 4200, bestNormalizedRatio: 0.4158, totalSubmissions: 2, achievedAt: '2026-01-01T00:00:00Z' },
+    ],
+  }
+
   beforeEach(async () => {
     queryClient = createTestQueryClient()
     mockApiFetch.mockReset()
     mockNavigate.mockReset()
-    mockApiFetch.mockResolvedValue(MOCK_COMPLETION)
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes('/benchmark-results/trajectory')) {
+        return Promise.resolve(MOCK_TRAJECTORY)
+      }
+      return Promise.resolve(MOCK_COMPLETION)
+    })
     const mod = await import('./Completion')
     Completion = mod.default
   })
@@ -103,7 +114,12 @@ describe('Completion', () => {
   })
 
   it('should show "Track Complete" and "Return to Overview" for last milestone', async () => {
-    mockApiFetch.mockResolvedValue(LAST_MILESTONE_COMPLETION)
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes('/benchmark-results/trajectory')) {
+        return Promise.resolve(MOCK_TRAJECTORY)
+      }
+      return Promise.resolve(LAST_MILESTONE_COMPLETION)
+    })
     renderCompletion('ms-last')
 
     expect(await screen.findByText('Track Complete')).toBeDefined()
@@ -111,7 +127,12 @@ describe('Completion', () => {
   })
 
   it('should navigate to overview when Return to Overview is clicked', async () => {
-    mockApiFetch.mockResolvedValue(LAST_MILESTONE_COMPLETION)
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes('/benchmark-results/trajectory')) {
+        return Promise.resolve(MOCK_TRAJECTORY)
+      }
+      return Promise.resolve(LAST_MILESTONE_COMPLETION)
+    })
     renderCompletion('ms-last')
 
     const button = await screen.findByRole('button', { name: /return to overview/i })
@@ -120,10 +141,61 @@ describe('Completion', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/overview', { replace: true })
   })
 
-  it('should show trajectory placeholder with placeholder text', async () => {
+  it('should render TrajectoryChart when trajectory data is available', async () => {
     renderCompletion()
 
-    expect(await screen.findByText(/Performance trajectory — available after benchmark integration/)).toBeDefined()
+    await screen.findByText(/Simple Key-Value Store — Complete/)
+    // The chart should render with the trajectory data
+    expect(await screen.findByRole('img', { name: /benchmark trajectory/i })).toBeDefined()
+  })
+
+  it('should show loading skeleton while trajectory data loads', async () => {
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes('/benchmark-results/trajectory')) {
+        return new Promise(() => {}) // never resolves
+      }
+      return Promise.resolve(MOCK_COMPLETION)
+    })
+    renderCompletion()
+
+    await screen.findByText(/Simple Key-Value Store — Complete/)
+    // Should show loading skeleton (animate-pulse)
+    const section = screen.getByLabelText('Performance trajectory')
+    expect(section.querySelector('.animate-pulse')).not.toBeNull()
+  })
+
+  it('should show error state when trajectory API fails', async () => {
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes('/benchmark-results/trajectory')) {
+        return Promise.reject(new Error('Network error'))
+      }
+      return Promise.resolve(MOCK_COMPLETION)
+    })
+    renderCompletion()
+
+    expect(await screen.findByText(/Unable to load trajectory data/)).toBeDefined()
+  })
+
+  it('should show empty state when no trajectory data', async () => {
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes('/benchmark-results/trajectory')) {
+        return Promise.resolve({ dataPoints: [] })
+      }
+      return Promise.resolve(MOCK_COMPLETION)
+    })
+    renderCompletion()
+
+    expect(await screen.findByText(/Run benchmarks to see your performance trajectory/)).toBeDefined()
+  })
+
+  it('should pass currentMilestoneNumber to TrajectoryChart with glow effect', async () => {
+    renderCompletion()
+
+    await screen.findByText(/Simple Key-Value Store — Complete/)
+    const point = await screen.findByTestId('trajectory-point-1')
+    // Current milestone should have larger radius and glow filter
+    expect(point.getAttribute('r')).toBe('6')
+    expect(point.getAttribute('filter')).toMatch(/url\(#glow/)
   })
 
   it('should show loading skeleton initially', () => {

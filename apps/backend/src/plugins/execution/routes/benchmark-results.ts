@@ -150,6 +150,77 @@ export async function benchmarkResultsRoutes(
     },
   )
 
+  fastify.get(
+    '/benchmark-results/trajectory',
+    async (request) => {
+      const uid = request.uid
+
+      // Get all benchmark results for this user with milestone metadata
+      const rows = await db
+        .selectFrom('benchmark_results')
+        .innerJoin('milestones', 'milestones.id', 'benchmark_results.milestone_id')
+        .select([
+          'benchmark_results.milestone_id',
+          'milestones.title',
+          'milestones.position',
+          'benchmark_results.benchmark_name',
+          'benchmark_results.raw_metrics',
+          'benchmark_results.normalized_ratio',
+          'benchmark_results.created_at',
+        ])
+        .where('benchmark_results.user_id', '=', uid)
+        .orderBy('milestones.position', 'asc')
+        .orderBy('benchmark_results.created_at', 'asc')
+        .execute()
+
+      // Group by milestone and pick best ops/sec per milestone
+      const milestoneMap = new Map<string, {
+        milestoneId: string
+        milestoneName: string
+        milestoneNumber: number
+        benchmarkName: string
+        bestOpsPerSec: number
+        bestNormalizedRatio: number
+        totalSubmissions: number
+        achievedAt: string
+      }>()
+
+      for (const row of rows) {
+        const rawMetrics = parseRawMetrics(row.raw_metrics)
+        const opsPerSec = typeof rawMetrics.opsPerSec === 'number' ? rawMetrics.opsPerSec : 0
+        const normalizedRatio = parseFloat(String(row.normalized_ratio))
+        const createdAt = row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at)
+
+        const existing = milestoneMap.get(row.milestone_id)
+        if (existing) {
+          existing.totalSubmissions += 1
+          if (opsPerSec > existing.bestOpsPerSec) {
+            existing.bestOpsPerSec = opsPerSec
+            existing.bestNormalizedRatio = normalizedRatio
+            existing.benchmarkName = row.benchmark_name
+            existing.achievedAt = createdAt
+          }
+        } else {
+          milestoneMap.set(row.milestone_id, {
+            milestoneId: row.milestone_id,
+            milestoneName: row.title,
+            milestoneNumber: row.position,
+            benchmarkName: row.benchmark_name,
+            bestOpsPerSec: opsPerSec,
+            bestNormalizedRatio: normalizedRatio,
+            totalSubmissions: 1,
+            achievedAt: createdAt,
+          })
+        }
+      }
+
+      // Already ordered by position from the query, but Map preserves insertion order
+      const dataPoints = [...milestoneMap.values()]
+
+      return { dataPoints }
+    },
+  )
+
   fastify.get<{ Params: { milestoneId: string } }>(
     '/benchmark-results/latest/:milestoneId',
     async (request, reply) => {

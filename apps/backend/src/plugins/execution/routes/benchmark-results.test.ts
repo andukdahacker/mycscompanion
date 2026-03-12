@@ -14,7 +14,7 @@ const mockAuth = createMockFirebaseAuth(TEST_UID)
 afterEach(async () => {
   await db.deleteFrom('benchmark_results').where('user_id', 'in', [TEST_UID, OTHER_UID]).execute()
   await db.deleteFrom('submissions').where('user_id', 'in', [TEST_UID, OTHER_UID]).execute()
-  await db.deleteFrom('milestones').where('id', '=', 'ms-bench-1').execute()
+  await db.deleteFrom('milestones').where('id', 'in', ['ms-bench-1', 'ms-bench-2', 'ms-bench-3']).execute()
   await db.deleteFrom('tracks').where('id', '=', 'track-bench-1').execute()
   await db.deleteFrom('users').where('id', 'in', [TEST_UID, OTHER_UID]).execute()
   vi.restoreAllMocks()
@@ -472,6 +472,256 @@ describe('GET /benchmark-results/history/:milestoneId', () => {
     })
 
     expect(res.statusCode).toBe(401)
+
+    await app.close()
+  })
+})
+
+describe('GET /benchmark-results/trajectory', () => {
+  async function seedTrajectoryData() {
+    await db
+      .insertInto('users')
+      .values({ id: TEST_UID, email: TEST_EMAIL })
+      .onConflict((oc) => oc.column('id').doNothing())
+      .execute()
+
+    await db
+      .insertInto('tracks')
+      .values({ id: 'track-bench-1', name: 'Test Track', slug: 'test-track' })
+      .onConflict((oc) => oc.column('id').doNothing())
+      .execute()
+
+    // Create 3 milestones with different positions
+    await db
+      .insertInto('milestones')
+      .values([
+        { id: 'ms-bench-1', track_id: 'track-bench-1', slug: '01-kv-store', title: 'KV Store', position: 1 },
+        { id: 'ms-bench-2', track_id: 'track-bench-1', slug: '02-btree', title: 'B-Tree Indexing', position: 2 },
+        { id: 'ms-bench-3', track_id: 'track-bench-1', slug: '03-storage', title: 'Storage Engine', position: 3 },
+      ])
+      .onConflict((oc) => oc.column('id').doNothing())
+      .execute()
+  }
+
+  async function seedBenchmarkForMilestone(
+    milestoneId: string,
+    opsPerSec: number,
+    opts: { createdAt?: Date; benchmarkName?: string } = {},
+  ) {
+    const subId = generateId()
+    await db
+      .insertInto('submissions')
+      .values({
+        id: subId,
+        user_id: TEST_UID,
+        milestone_id: milestoneId,
+        code: 'package main',
+        status: 'completed',
+      })
+      .execute()
+
+    const benchId = generateId()
+    const ratio = (opsPerSec / 10100).toFixed(4)
+    await db
+      .insertInto('benchmark_results')
+      .values({
+        id: benchId,
+        submission_id: subId,
+        user_id: TEST_UID,
+        milestone_id: milestoneId,
+        benchmark_name: opts.benchmarkName ?? 'sequential-inserts',
+        raw_metrics: JSON.stringify({
+          userMedian: opsPerSec,
+          referenceMedian: 10100,
+          opsPerSec,
+        }),
+        normalized_ratio: ratio,
+        reference_version: 'milestone-1-v1',
+        ...(opts.createdAt ? { created_at: opts.createdAt } : {}),
+      })
+      .execute()
+
+    return benchId
+  }
+
+  it('should return trajectory data points ordered by milestone number', async () => {
+    await seedTrajectoryData()
+    // Seed results for milestones out of order to verify sorting
+    await seedBenchmarkForMilestone('ms-bench-3', 12400)
+    await seedBenchmarkForMilestone('ms-bench-1', 4200)
+    await seedBenchmarkForMilestone('ms-bench-2', 8100)
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/trajectory',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.dataPoints).toHaveLength(3)
+    // Should be ordered by milestone position
+    expect(body.dataPoints[0].milestoneNumber).toBe(1)
+    expect(body.dataPoints[0].milestoneName).toBe('KV Store')
+    expect(body.dataPoints[0].bestOpsPerSec).toBe(4200)
+    expect(body.dataPoints[1].milestoneNumber).toBe(2)
+    expect(body.dataPoints[1].milestoneName).toBe('B-Tree Indexing')
+    expect(body.dataPoints[1].bestOpsPerSec).toBe(8100)
+    expect(body.dataPoints[2].milestoneNumber).toBe(3)
+    expect(body.dataPoints[2].milestoneName).toBe('Storage Engine')
+    expect(body.dataPoints[2].bestOpsPerSec).toBe(12400)
+
+    await app.close()
+  })
+
+  it('should return best ops/sec per milestone (not latest, not average)', async () => {
+    await seedTrajectoryData()
+    // Seed multiple results for ms-bench-1 — best should be picked
+    await seedBenchmarkForMilestone('ms-bench-1', 4200, { createdAt: new Date('2026-01-01T00:00:00Z') })
+    await seedBenchmarkForMilestone('ms-bench-1', 9500, { createdAt: new Date('2026-01-02T00:00:00Z') }) // Best
+    await seedBenchmarkForMilestone('ms-bench-1', 6000, { createdAt: new Date('2026-01-03T00:00:00Z') }) // Latest but not best
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/trajectory',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.dataPoints).toHaveLength(1)
+    expect(body.dataPoints[0].bestOpsPerSec).toBe(9500)
+    expect(body.dataPoints[0].totalSubmissions).toBe(3)
+
+    await app.close()
+  })
+
+  it('should return empty array when no benchmark results exist', async () => {
+    await seedTrajectoryData()
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/trajectory',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.dataPoints).toEqual([])
+
+    await app.close()
+  })
+
+  it('should return 401 for unauthenticated request', async () => {
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/trajectory',
+    })
+
+    expect(res.statusCode).toBe(401)
+
+    await app.close()
+  })
+
+  it('should handle single milestone with multiple benchmark results correctly', async () => {
+    await seedTrajectoryData()
+    await seedBenchmarkForMilestone('ms-bench-2', 5000, { createdAt: new Date('2026-01-01T00:00:00Z') })
+    await seedBenchmarkForMilestone('ms-bench-2', 7500, { createdAt: new Date('2026-01-02T00:00:00Z') })
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/trajectory',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.dataPoints).toHaveLength(1)
+    expect(body.dataPoints[0].milestoneId).toBe('ms-bench-2')
+    expect(body.dataPoints[0].bestOpsPerSec).toBe(7500)
+    expect(body.dataPoints[0].totalSubmissions).toBe(2)
+    expect(body.dataPoints[0].bestNormalizedRatio).toBeCloseTo(7500 / 10100, 3)
+
+    await app.close()
+  })
+
+  it('should only return trajectory data for the authenticated user', async () => {
+    await seedTrajectoryData()
+    // Seed data for the authenticated user
+    await seedBenchmarkForMilestone('ms-bench-1', 4200)
+
+    // Seed data for a different user
+    await db
+      .insertInto('users')
+      .values({ id: OTHER_UID, email: 'other@example.com' })
+      .onConflict((oc) => oc.column('id').doNothing())
+      .execute()
+    const otherSubId = generateId()
+    await db
+      .insertInto('submissions')
+      .values({
+        id: otherSubId,
+        user_id: OTHER_UID,
+        milestone_id: 'ms-bench-2',
+        code: 'package main',
+        status: 'completed',
+      })
+      .execute()
+    await db
+      .insertInto('benchmark_results')
+      .values({
+        id: generateId(),
+        submission_id: otherSubId,
+        user_id: OTHER_UID,
+        milestone_id: 'ms-bench-2',
+        benchmark_name: 'range-scan',
+        raw_metrics: JSON.stringify({ opsPerSec: 99999, userMedian: 99999, referenceMedian: 10100 }),
+        normalized_ratio: '9.9009',
+        reference_version: 'milestone-1-v1',
+      })
+      .execute()
+
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/trajectory',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    // Should only contain TEST_UID's data, not OTHER_UID's
+    expect(body.dataPoints).toHaveLength(1)
+    expect(body.dataPoints[0].milestoneId).toBe('ms-bench-1')
+    expect(body.dataPoints[0].bestOpsPerSec).toBe(4200)
+
+    await app.close()
+  })
+
+  it('should handle multiple milestones with different benchmark names', async () => {
+    await seedTrajectoryData()
+    await seedBenchmarkForMilestone('ms-bench-1', 4200, { benchmarkName: 'sequential-inserts' })
+    await seedBenchmarkForMilestone('ms-bench-2', 8100, { benchmarkName: 'range-scan' })
+    const app = buildApp()
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/benchmark-results/trajectory',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(res.statusCode).toBe(200)
+    const body = res.json()
+    expect(body.dataPoints).toHaveLength(2)
+    expect(body.dataPoints[0].benchmarkName).toBe('sequential-inserts')
+    expect(body.dataPoints[1].benchmarkName).toBe('range-scan')
 
     await app.close()
   })

@@ -1,12 +1,15 @@
 import { useParams, useNavigate } from 'react-router'
 import { useCompletionData } from '../hooks/use-completion-data'
+import { useTrajectoryData } from '../hooks/use-trajectory-data'
 import { CompletionSkeleton } from '../components/completion/CompletionSkeleton'
+import { TrajectoryChart, TrajectoryDataTable } from '../components/overview/TrajectoryChart'
 import type { CriterionResult } from '@mycscompanion/shared'
 
 function Completion(): React.ReactElement {
   const { milestoneId } = useParams<{ milestoneId: string }>()
   const navigate = useNavigate()
   const { data, isLoading, isError, refetch } = useCompletionData(milestoneId)
+  const { dataPoints: trajectoryDataPoints, isLoading: trajectoryLoading, error: trajectoryError } = useTrajectoryData()
 
   if (isLoading) {
     return <CompletionSkeleton />
@@ -63,14 +66,30 @@ function Completion(): React.ReactElement {
           </ul>
         </section>
 
-        {/* Trajectory Chart Placeholder */}
-        <section
-          aria-label="Performance trajectory"
-          className="trajectory-placeholder rounded-lg border border-border p-8 text-center"
-        >
-          <p className="text-sm text-muted-foreground">
-            Performance trajectory — available after benchmark integration
-          </p>
+        {/* Trajectory Chart */}
+        <section aria-label="Performance trajectory">
+          {trajectoryLoading ? (
+            <div className="w-full rounded-lg border border-border p-4 lg:max-w-[400px] xl:max-w-[500px]">
+              <div className="space-y-3">
+                <div className="h-4 w-1/3 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+                <div className="h-[140px] animate-pulse rounded bg-muted motion-reduce:animate-none" />
+              </div>
+            </div>
+          ) : trajectoryError && trajectoryDataPoints.length === 0 ? (
+            <div className="w-full rounded-lg border border-border bg-card p-4 lg:max-w-[400px] xl:max-w-[500px]">
+              <p className="text-sm text-muted-foreground">Unable to load trajectory data.</p>
+            </div>
+          ) : (
+            <>
+              <TrajectoryChart
+                dataPoints={trajectoryDataPoints}
+                currentMilestoneNumber={data.milestoneNumber}
+              />
+              {trajectoryDataPoints.length > 0 ? (
+                <TrajectoryDataTable dataPoints={trajectoryDataPoints} />
+              ) : null}
+            </>
+          )}
         </section>
 
         {/* Next Milestone Preview */}
@@ -108,13 +127,6 @@ function Completion(): React.ReactElement {
         </div>
       </div>
 
-      <style>{`
-        @media (prefers-reduced-motion: reduce) {
-          .trajectory-placeholder {
-            animation: none;
-          }
-        }
-      `}</style>
     </div>
   )
 }
