@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router'
 import { WorkspaceTopBar } from './WorkspaceTopBar'
 
 describe('WorkspaceTopBar', () => {
@@ -17,7 +18,11 @@ describe('WorkspaceTopBar', () => {
       onRun: vi.fn(),
       onBenchmark: vi.fn(),
     }
-    return { ...defaultProps, ...render(<WorkspaceTopBar {...defaultProps} {...overrides} />) }
+    return { ...defaultProps, ...render(
+      <MemoryRouter>
+        <WorkspaceTopBar {...defaultProps} {...overrides} />
+      </MemoryRouter>,
+    ) }
   }
 
   it('should render milestone name and progress', () => {
@@ -56,5 +61,12 @@ describe('WorkspaceTopBar', () => {
 
     expect(runButton).toHaveAttribute('title')
     expect(benchmarkButton).toHaveAttribute('title')
+  })
+
+  it('should render settings link with href /settings and aria-label', () => {
+    renderTopBar()
+
+    const link = screen.getByLabelText('Account settings')
+    expect(link.closest('a')?.getAttribute('href')).toBe('/settings')
   })
 })

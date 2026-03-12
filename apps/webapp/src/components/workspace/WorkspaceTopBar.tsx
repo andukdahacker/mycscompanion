@@ -1,5 +1,6 @@
+import { Link } from 'react-router'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
-import { Play, BarChart3 } from 'lucide-react'
+import { Play, BarChart3, Settings } from 'lucide-react'
 
 interface WorkspaceTopBarProps {
   readonly milestoneName: string
@@ -27,6 +28,14 @@ function WorkspaceTopBar({
       </div>
 
       <div className="flex items-center gap-2">
+        <Link
+          to="/settings"
+          className="inline-flex items-center justify-center rounded-md text-sm font-medium text-muted-foreground hover:text-foreground h-8 w-8"
+          aria-label="Account settings"
+          title="Account settings"
+        >
+          <Settings className="size-4" />
+        </Link>
         <Button
           variant="outline"
           size="sm"

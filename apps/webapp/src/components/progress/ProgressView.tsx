@@ -27,12 +27,21 @@ function ProgressView(): React.ReactElement {
   return (
     <main className="flex min-h-screen justify-center bg-background p-4 pt-12" aria-label="Track progress">
       <div className="w-full max-w-2xl space-y-6">
-        <Link
-          to="/overview"
-          className="text-sm text-muted-foreground hover:underline"
-        >
-          ← Back to overview
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link
+            to="/overview"
+            className="text-sm text-muted-foreground hover:underline"
+          >
+            ← Back to overview
+          </Link>
+          <Link
+            to="/settings"
+            className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+            aria-label="Account settings"
+          >
+            Settings
+          </Link>
+        </div>
 
         <section>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">

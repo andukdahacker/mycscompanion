@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest'
 import { render, screen, cleanup, act } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 
 import type { AcceptanceCriterion, ConceptExplainerAsset } from '@mycscompanion/shared'
 import { WorkspaceLayout } from './WorkspaceLayout'
@@ -114,27 +115,27 @@ describe('WorkspaceLayout', () => {
 
   describe('desktop layout (>=1280px)', () => {
     it('should render resizable panel group with horizontal orientation', () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       const panelGroup = document.querySelector('[data-group]')
       expect(panelGroup).toBeInTheDocument()
     })
 
     it('should render WorkspaceTopBar', () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       expect(screen.getByText(/Milestone 1/)).toBeInTheDocument()
       expect(screen.getByText(/KV Store/)).toBeInTheDocument()
     })
 
     it('should render CodeEditor component', () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       expect(screen.getByTestId('code-editor')).toBeInTheDocument()
     })
 
     it('should pass initialContent to CodeEditor', () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       const editor = screen.getByTestId('code-editor')
       expect(editor.getAttribute('data-initial-content')).toBe(defaultProps.initialContent)
@@ -142,7 +143,7 @@ describe('WorkspaceLayout', () => {
 
     it('should pass onRun to CodeEditor', async () => {
       const onRun = vi.fn()
-      render(<WorkspaceLayout {...defaultProps} onRun={onRun} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} onRun={onRun} /></MemoryRouter>)
 
       const runTrigger = screen.getByTestId('mock-run-trigger')
       await act(async () => {
@@ -153,7 +154,7 @@ describe('WorkspaceLayout', () => {
     })
 
     it('should have workspace-container with tabIndex={-1} for focus management', () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       const container = document.getElementById('workspace-container')
       expect(container).toBeInTheDocument()
@@ -161,7 +162,7 @@ describe('WorkspaceLayout', () => {
     })
 
     it('should render ARIA live region for screen reader announcements', () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       const announcer = document.getElementById('workspace-announcer')
       expect(announcer).toBeInTheDocument()
@@ -170,20 +171,20 @@ describe('WorkspaceLayout', () => {
     })
 
     it('should render skip-to-editor link', () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       expect(screen.getByText('Skip to editor')).toBeInTheDocument()
     })
 
     it('should render TerminalPanel', () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       expect(screen.getByTestId('terminal-panel')).toBeInTheDocument()
     })
 
     it('should pass outputLines, isRunning, and onRetry to TerminalPanel', () => {
       const onRetry = vi.fn()
-      render(<WorkspaceLayout {...defaultProps} isRunning={true} onRetry={onRetry} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} isRunning={true} onRetry={onRetry} /></MemoryRouter>)
 
       const terminal = screen.getByTestId('terminal-panel')
       expect(terminal.getAttribute('data-is-running')).toBe('true')
@@ -191,7 +192,7 @@ describe('WorkspaceLayout', () => {
     })
 
     it('should render tutor panel', () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       expect(screen.getByTestId('tutor-panel')).toBeInTheDocument()
     })
@@ -200,7 +201,7 @@ describe('WorkspaceLayout', () => {
       const criteriaResults = [
         { name: 'put-and-get', order: 1, status: 'met' as const, expected: 'PASS', actual: 'Found' },
       ]
-      render(<WorkspaceLayout {...defaultProps} criteriaResults={criteriaResults} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} criteriaResults={criteriaResults} /></MemoryRouter>)
 
       const terminal = screen.getByTestId('terminal-panel')
       const results = JSON.parse(terminal.getAttribute('data-criteria-results') ?? '[]') as Array<Record<string, unknown>>
@@ -209,7 +210,7 @@ describe('WorkspaceLayout', () => {
     })
 
     it('should pass null criteriaResults to TerminalPanel when no results', () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       const terminal = screen.getByTestId('terminal-panel')
       expect(terminal.getAttribute('data-criteria-results')).toBe('')
@@ -222,7 +223,7 @@ describe('WorkspaceLayout', () => {
     })
 
     it('should render overlay tutor panel when expanded', () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       expect(screen.getByTestId('tutor-overlay')).toBeInTheDocument()
     })
@@ -230,7 +231,7 @@ describe('WorkspaceLayout', () => {
     it('should not render tutor overlay when collapsed', () => {
       useWorkspaceUIStore.setState({ tutorExpanded: false })
 
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       expect(screen.queryByTestId('tutor-overlay')).not.toBeInTheDocument()
     })
@@ -242,20 +243,20 @@ describe('WorkspaceLayout', () => {
     })
 
     it('should render read-only message instead of workspace', () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       expect(screen.getByText(/continue on desktop/i)).toBeInTheDocument()
     })
 
     it('should not render resizable panels', () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       const panelGroup = document.querySelector('[data-group]')
       expect(panelGroup).not.toBeInTheDocument()
     })
 
     it('should show milestone progress', () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       expect(screen.getByText(/40%/)).toBeInTheDocument()
     })
@@ -263,7 +264,7 @@ describe('WorkspaceLayout', () => {
 
   describe('keyboard shortcuts', () => {
     it('should toggle tutor on Ctrl+/', async () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       expect(useWorkspaceUIStore.getState().tutorExpanded).toBe(true)
 
@@ -275,7 +276,7 @@ describe('WorkspaceLayout', () => {
     })
 
     it('should collapse tutor on Escape when expanded', async () => {
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       expect(useWorkspaceUIStore.getState().tutorExpanded).toBe(true)
 
@@ -288,7 +289,7 @@ describe('WorkspaceLayout', () => {
 
     it('should not change state on Escape when tutor is already collapsed', async () => {
       useWorkspaceUIStore.setState({ tutorExpanded: false })
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       await act(async () => {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
@@ -299,7 +300,7 @@ describe('WorkspaceLayout', () => {
 
     it('should call onRun on Ctrl+Enter', async () => {
       const onRun = vi.fn()
-      render(<WorkspaceLayout {...defaultProps} onRun={onRun} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} onRun={onRun} /></MemoryRouter>)
 
       await act(async () => {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }))
@@ -310,7 +311,7 @@ describe('WorkspaceLayout', () => {
 
     it('should call onBenchmark on Ctrl+Shift+Enter', async () => {
       const onBenchmark = vi.fn()
-      render(<WorkspaceLayout {...defaultProps} onBenchmark={onBenchmark} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} onBenchmark={onBenchmark} /></MemoryRouter>)
 
       await act(async () => {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, shiftKey: true, bubbles: true }))
@@ -325,14 +326,14 @@ describe('WorkspaceLayout', () => {
       const assets: readonly ConceptExplainerAsset[] = [
         { name: 'kv-ops.svg', path: '/assets/kv-ops.svg', altText: 'KV ops', title: 'KV Ops' },
       ]
-      render(<WorkspaceLayout {...defaultProps} conceptExplainerAssets={assets} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} conceptExplainerAssets={assets} /></MemoryRouter>)
 
       const terminal = screen.getByTestId('terminal-panel')
       expect(terminal.getAttribute('data-concept-assets-count')).toBe('1')
     })
 
     it('should pass empty array when no assets exist', () => {
-      render(<WorkspaceLayout {...defaultProps} conceptExplainerAssets={[]} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} conceptExplainerAssets={[]} /></MemoryRouter>)
 
       const terminal = screen.getByTestId('terminal-panel')
       expect(terminal.getAttribute('data-concept-assets-count')).toBe('0')
@@ -343,7 +344,7 @@ describe('WorkspaceLayout', () => {
     it('should have green glow classes when isStage1=true and tutor is collapsed', () => {
       useWorkspaceUIStore.setState({ tutorExpanded: false })
 
-      render(<WorkspaceLayout {...defaultProps} isStage1={true} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} isStage1={true} /></MemoryRouter>)
 
       const tutorPanel = screen.getByTestId('tutor-panel')
       const button = tutorPanel.querySelector('button')
@@ -356,7 +357,7 @@ describe('WorkspaceLayout', () => {
     it('should have default classes when isStage1=false and tutor is collapsed', () => {
       useWorkspaceUIStore.setState({ tutorExpanded: false })
 
-      render(<WorkspaceLayout {...defaultProps} isStage1={false} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} isStage1={false} /></MemoryRouter>)
 
       const tutorPanel = screen.getByTestId('tutor-panel')
       const button = tutorPanel.querySelector('button')
@@ -368,7 +369,7 @@ describe('WorkspaceLayout', () => {
     it('should have motion-reduce:animate-none class for green glow', () => {
       useWorkspaceUIStore.setState({ tutorExpanded: false })
 
-      render(<WorkspaceLayout {...defaultProps} isStage1={true} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} isStage1={true} /></MemoryRouter>)
 
       const tutorPanel = screen.getByTestId('tutor-panel')
       const button = tutorPanel.querySelector('button')
@@ -378,7 +379,7 @@ describe('WorkspaceLayout', () => {
     it('should have updated aria-label when isStage1=true', () => {
       useWorkspaceUIStore.setState({ tutorExpanded: false })
 
-      render(<WorkspaceLayout {...defaultProps} isStage1={true} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} isStage1={true} /></MemoryRouter>)
 
       const button = screen.getByRole('button', { name: /tutor wants to help/i })
       expect(button).toBeInTheDocument()
@@ -389,7 +390,7 @@ describe('WorkspaceLayout', () => {
     it('should show unavailable message when tutorAvailable is false', () => {
       useWorkspaceUIStore.setState({ tutorAvailable: false })
 
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       expect(screen.getByText(/temporarily unavailable/i)).toBeInTheDocument()
     })
@@ -397,7 +398,7 @@ describe('WorkspaceLayout', () => {
     it('should show retry button when tutor is unavailable', () => {
       useWorkspaceUIStore.setState({ tutorAvailable: false })
 
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       // Multiple retry buttons may exist (terminal + tutor), so use getAllByRole
       const retryButtons = screen.getAllByRole('button', { name: /retry/i })
@@ -409,7 +410,7 @@ describe('WorkspaceLayout', () => {
     it('should render editor, terminal, and criteria panels when tutorAvailable is false', () => {
       useWorkspaceUIStore.setState({ tutorAvailable: false })
 
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       expect(screen.getByTestId('code-editor')).toBeInTheDocument()
       expect(screen.getByTestId('terminal-panel')).toBeInTheDocument()
@@ -420,7 +421,7 @@ describe('WorkspaceLayout', () => {
     it('should still pass correct props to editor when tutor is unavailable', () => {
       useWorkspaceUIStore.setState({ tutorAvailable: false })
 
-      render(<WorkspaceLayout {...defaultProps} initialContent="test code" />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} initialContent="test code" /></MemoryRouter>)
 
       const editor = screen.getByTestId('code-editor')
       expect(editor).toHaveAttribute('data-initial-content', 'test code')
@@ -429,7 +430,7 @@ describe('WorkspaceLayout', () => {
     it('should still allow submission when tutor is unavailable', () => {
       useWorkspaceUIStore.setState({ tutorAvailable: false })
 
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       const runButton = screen.getByTestId('mock-run-trigger')
       expect(runButton).toBeInTheDocument()
@@ -444,7 +445,7 @@ describe('WorkspaceLayout', () => {
       setWindowWidth(600)
       useWorkspaceUIStore.setState({ tutorAvailable: false, breakpointMode: 'mobile' })
 
-      render(<WorkspaceLayout {...defaultProps} />)
+      render(<MemoryRouter><WorkspaceLayout {...defaultProps} /></MemoryRouter>)
 
       // TutorPanel should still be rendered (with readOnly in mobile)
       const tutorMock = screen.getByTestId('tutor-chat-mock')

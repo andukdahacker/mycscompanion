@@ -176,4 +176,12 @@ describe('ProgressView', () => {
     renderComponent()
     expect(screen.getByRole('list', { name: 'Milestones' })).toBeInTheDocument()
   })
+
+  it('should render settings link pointing to /settings', () => {
+    mockUseTrackProgress.mockReturnValue({ data: mockTrackData, isLoading: false, error: null, refetch: vi.fn() })
+    renderComponent()
+
+    const link = screen.getByText('Settings')
+    expect(link.closest('a')?.getAttribute('href')).toBe('/settings')
+  })
 })

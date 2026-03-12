@@ -293,4 +293,11 @@ describe('MilestoneStartOverview', () => {
     expect(link).toBeInTheDocument()
     expect(link.closest('a')?.getAttribute('href')).toBe('/progress')
   })
+
+  it('should render settings link pointing to /settings', () => {
+    renderComponent()
+
+    const link = screen.getByText('Settings')
+    expect(link.closest('a')?.getAttribute('href')).toBe('/settings')
+  })
 })

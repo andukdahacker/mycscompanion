@@ -16,6 +16,16 @@ function FirstTimeOverview({ milestone }: FirstTimeOverviewProps): React.ReactEl
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-2xl space-y-8">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-muted-foreground">mycscompanion</span>
+          <Link
+            to="/settings"
+            className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+            aria-label="Account settings"
+          >
+            Settings
+          </Link>
+        </div>
         <section>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             You&apos;re building a database from scratch.
