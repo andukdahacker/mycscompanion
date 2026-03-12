@@ -1,12 +1,13 @@
 import { initializeApp, cert, getApps } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 
-/** Narrow interface — only what the auth plugin actually needs from Firebase Admin */
-interface TokenVerifier {
+/** Narrow interface — only what plugins actually need from Firebase Admin */
+interface FirebaseAdminAuth {
   verifyIdToken(token: string): Promise<{ uid: string }>
+  deleteUser(uid: string): Promise<void>
 }
 
-function initFirebaseAdmin(): TokenVerifier {
+function initFirebaseAdmin(): FirebaseAdminAuth {
   if (getApps().length > 0) return getAuth()
 
   const serviceAccount = process.env['FIREBASE_SERVICE_ACCOUNT']
@@ -31,4 +32,4 @@ function initFirebaseAdmin(): TokenVerifier {
 }
 
 export { initFirebaseAdmin }
-export type { TokenVerifier }
+export type { FirebaseAdminAuth }

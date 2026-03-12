@@ -9,6 +9,7 @@ interface MockDecodedToken {
 
 interface MockFirebaseAuth {
   verifyIdToken: Mock<(token: string) => Promise<MockDecodedToken>>
+  deleteUser: Mock<(uid: string) => Promise<void>>
 }
 
 function createMockFirebaseAuth(defaultUid?: string): MockFirebaseAuth {
@@ -19,6 +20,7 @@ function createMockFirebaseAuth(defaultUid?: string): MockFirebaseAuth {
       email: `${uid}@test.com`,
       name: 'Test User',
     })),
+    deleteUser: vi.fn(async () => undefined),
   }
 }
 

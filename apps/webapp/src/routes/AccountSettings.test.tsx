@@ -30,6 +30,11 @@ vi.mock('../hooks/use-data-export', () => ({
   useDataExport: () => mockUseDataExport(),
 }))
 
+const mockUseAccountDeletion = vi.fn()
+vi.mock('../hooks/use-account-deletion', () => ({
+  useAccountDeletion: () => mockUseAccountDeletion(),
+}))
+
 const MOCK_PROFILE: UserProfile = {
   id: 'test-uid',
   email: 'test@example.com',
@@ -52,10 +57,16 @@ beforeEach(async () => {
   mockSignOut.mockReset()
   mockUseAccountProfile.mockReset()
   mockUseDataExport.mockReset()
+  mockUseAccountDeletion.mockReset()
   mockUseDataExport.mockReturnValue({
     state: { status: 'idle', error: null },
     triggerExport: vi.fn(),
     downloadExport: vi.fn(),
+  })
+  mockUseAccountDeletion.mockReturnValue({
+    state: { status: 'idle', error: null },
+    deleteAccount: vi.fn(),
+    reset: vi.fn(),
   })
   const mod = await import('./AccountSettings')
   AccountSettings = mod.default
@@ -221,10 +232,10 @@ describe('AccountSettings', () => {
       })
     })
 
-    it('should render disabled "Delete Account" button', () => {
+    it('should render enabled "Delete Account" button', () => {
       renderComponent()
-      const button = screen.getByText('Delete Account (Coming soon)')
-      expect(button.closest('button')?.disabled).toBe(true)
+      const button = screen.getByText('Delete Account')
+      expect(button.closest('button')?.disabled).toBeFalsy()
     })
 
     it('should render disabled "Privacy Policy" link', () => {
@@ -316,6 +327,80 @@ describe('AccountSettings', () => {
       renderComponent()
       await userEvent.click(screen.getByText('Download Export'))
       expect(mockDownload).toHaveBeenCalled()
+    })
+  })
+
+  describe('account deletion', () => {
+    beforeEach(() => {
+      mockUseAccountProfile.mockReturnValue({
+        data: MOCK_PROFILE,
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      })
+    })
+
+    it('should open delete dialog when Delete Account button is clicked', async () => {
+      renderComponent()
+      await userEvent.click(screen.getByText('Delete Account'))
+      expect(screen.getByRole('alertdialog')).toBeTruthy()
+    })
+
+    it('should call deleteAccount when dialog confirm is clicked', async () => {
+      const mockDelete = vi.fn()
+      mockUseAccountDeletion.mockReturnValue({
+        state: { status: 'idle', error: null },
+        deleteAccount: mockDelete,
+        reset: vi.fn(),
+      })
+      renderComponent()
+      await userEvent.click(screen.getByText('Delete Account'))
+      await userEvent.click(screen.getByRole('button', { name: 'Delete My Account' }))
+      expect(mockDelete).toHaveBeenCalled()
+    })
+
+    it('should show error message when deletion fails', () => {
+      mockUseAccountDeletion.mockReturnValue({
+        state: { status: 'failed', error: 'Account deletion failed. Please try again.' },
+        deleteAccount: vi.fn(),
+        reset: vi.fn(),
+      })
+      renderComponent()
+      expect(screen.getByText('Account deletion failed. Please try again.')).toBeTruthy()
+    })
+
+    it('should close dialog when Cancel is clicked', async () => {
+      renderComponent()
+      await userEvent.click(screen.getByText('Delete Account'))
+      expect(screen.getByRole('alertdialog')).toBeTruthy()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+      expect(screen.queryByRole('alertdialog')).toBeNull()
+    })
+
+    it('should reset deletion state when dialog is closed', async () => {
+      const mockReset = vi.fn()
+      mockUseAccountDeletion.mockReturnValue({
+        state: { status: 'idle', error: null },
+        deleteAccount: vi.fn(),
+        reset: mockReset,
+      })
+      renderComponent()
+      await userEvent.click(screen.getByText('Delete Account'))
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+      expect(mockReset).toHaveBeenCalled()
+    })
+
+    it('should show "Deleting…" in dialog when deletion in progress', async () => {
+      mockUseAccountDeletion.mockReturnValue({
+        state: { status: 'deleting', error: null },
+        deleteAccount: vi.fn(),
+        reset: vi.fn(),
+      })
+      renderComponent()
+      await userEvent.click(screen.getByText('Delete Account'))
+      expect(screen.getByText('Deleting\u2026')).toBeTruthy()
     })
   })
 })

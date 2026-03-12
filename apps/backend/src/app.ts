@@ -5,6 +5,7 @@ import fastifyStatic from '@fastify/static'
 import { resolve, join } from 'node:path'
 import { Sentry } from './instrument.js'
 import { authPlugin } from './plugins/auth/index.js'
+import { initFirebaseAdmin } from './plugins/auth/firebase.js'
 import { executionPlugin } from './plugins/execution/index.js'
 import { tutorPlugin } from './plugins/tutor/index.js'
 import { curriculumPlugin } from './plugins/curriculum/index.js'
@@ -44,7 +45,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   // --- Plugin registration order (ARCH-5) ---
   // Position 1: Auth (global onRequest hook — must be first)
-  await fastify.register(authPlugin)
+  const firebaseAuth = initFirebaseAdmin()
+  await fastify.register(authPlugin, { firebaseAuth })
 
   // Position 2: Rate limiter + queue infrastructure
   const redisUrl = process.env['REDIS_URL']
@@ -99,7 +101,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   const contentLoader = createContentLoader({ redis, log: fastify.log })
   await fastify.register(completionPlugin, { prefix: '/api/completion', contentLoader })
   await fastify.register(progressPlugin, { prefix: '/api/progress', contentLoader })
-  await fastify.register(accountPlugin, { prefix: '/api/account', exportQueue })
+  await fastify.register(accountPlugin, { prefix: '/api/account', exportQueue, firebaseAuth })
 
   // Position 4: Admin tools (Bull Board) — after domain plugins, uses own auth (basic auth)
   // Prefix scopes basicAuth hook + routes. setBasePath for UI link generation.

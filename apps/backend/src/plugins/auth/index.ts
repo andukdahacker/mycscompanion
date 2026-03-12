@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import fp from 'fastify-plugin'
-import { initFirebaseAdmin, type TokenVerifier } from './firebase.js'
+import { initFirebaseAdmin, type FirebaseAdminAuth } from './firebase.js'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -9,7 +9,7 @@ declare module 'fastify' {
 }
 
 interface AuthPluginOptions {
-  readonly firebaseAuth?: TokenVerifier
+  readonly firebaseAuth?: FirebaseAdminAuth
 }
 
 async function auth(fastify: FastifyInstance, opts: AuthPluginOptions): Promise<void> {

@@ -4,8 +4,10 @@ import { Button } from '@mycscompanion/ui/src/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@mycscompanion/ui/src/components/ui/card'
 import { useAccountProfile } from '../hooks/use-account-profile'
 import { useDataExport } from '../hooks/use-data-export'
+import { useAccountDeletion } from '../hooks/use-account-deletion'
 import { signOut } from '../lib/firebase'
 import { AccountSettingsSkeleton } from '../components/settings/AccountSettingsSkeleton'
+import { DeleteAccountDialog } from '../components/settings/DeleteAccountDialog'
 
 const ROLE_LABELS: Record<string, string> = {
   'backend-engineer': 'Backend Engineer',
@@ -43,6 +45,20 @@ function AccountSettings(): React.ReactElement {
   const { data, isLoading, isError, refetch } = useAccountProfile()
   const [signingOut, setSigningOut] = useState(false)
   const { state: exportState, triggerExport, downloadExport } = useDataExport()
+  const { state: deletionState, deleteAccount, reset: resetDeletion } = useAccountDeletion()
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+
+  const handleDeleteConfirm = useCallback(() => {
+    void deleteAccount()
+  }, [deleteAccount])
+
+  const handleDeleteDialogChange = useCallback((open: boolean) => {
+    if (deletionState.status === 'deleting') return
+    setDeleteDialogOpen(open)
+    if (!open) {
+      resetDeletion()
+    }
+  }, [resetDeletion, deletionState.status])
 
   const handleSignOut = useCallback(async () => {
     setSigningOut(true)
@@ -174,8 +190,15 @@ function AccountSettings(): React.ReactElement {
                   </Button>
                 </div>
               )}
-              <Button variant="outline" className="w-full" disabled>
-                Delete Account (Coming soon)
+              {deletionState.status === 'failed' && (
+                <p className="text-sm text-destructive">{deletionState.error}</p>
+              )}
+              <Button
+                variant="outline"
+                className="w-full text-destructive hover:text-destructive"
+                onClick={() => setDeleteDialogOpen(true)}
+              >
+                Delete Account
               </Button>
               <Button variant="outline" className="w-full" disabled>
                 Privacy Policy (Coming soon)
@@ -194,6 +217,12 @@ function AccountSettings(): React.ReactElement {
           {signingOut ? 'Signing out\u2026' : 'Sign Out'}
         </Button>
       </div>
+      <DeleteAccountDialog
+        open={deleteDialogOpen}
+        onOpenChange={handleDeleteDialogChange}
+        onConfirm={handleDeleteConfirm}
+        isDeleting={deletionState.status === 'deleting'}
+      />
     </main>
   )
 }
