@@ -123,7 +123,7 @@ development_status:
   7-2-benchmark-results-display: done
   7-3-historical-benchmark-results: done
   7-4-benchmark-trajectory-visualization: done
-  7-5-progressive-enhancements-to-overview-and-completion: backlog
+  7-5-progressive-enhancements-to-overview-and-completion: done
   epic-7-retrospective: optional
 
   # Epic 8: User Account & Privacy

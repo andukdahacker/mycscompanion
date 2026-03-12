@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import type { Kysely } from 'kysely'
+import { sql, type Kysely } from 'kysely'
 import type { DB } from '@mycscompanion/shared'
 import type { CriterionResult, MilestoneProgressInfo, MilestoneStatus, TrackProgressData } from '@mycscompanion/shared'
 
@@ -107,6 +107,30 @@ export async function trackProgressRoutes(
       }
     }
 
+    // Fetch best benchmark ops/sec per milestone via SQL aggregation
+    const milestoneIdsWithActivity = milestones
+      .filter((m) => completionMap.has(m.id) || (firstIncompleteMilestone && m.id === firstIncompleteMilestone.id))
+      .map((m) => m.id)
+
+    const benchmarkMap = new Map<string, number>()
+    if (milestoneIdsWithActivity.length > 0) {
+      const benchmarkRows = await db
+        .selectFrom('benchmark_results')
+        .select('milestone_id')
+        .select(sql<string>`max((raw_metrics->>'opsPerSec')::numeric)`.as('max_ops'))
+        .where('user_id', '=', uid)
+        .where('milestone_id', 'in', milestoneIdsWithActivity)
+        .groupBy('milestone_id')
+        .execute()
+
+      for (const row of benchmarkRows) {
+        const ops = parseFloat(row.max_ops) || 0
+        if (ops > 0) {
+          benchmarkMap.set(row.milestone_id, ops)
+        }
+      }
+    }
+
     // Build milestone progress info
     const milestoneProgress: MilestoneProgressInfo[] = milestones.map((m) => {
       let status: MilestoneStatus
@@ -144,7 +168,9 @@ export async function trackProgressRoutes(
         criteriaMet,
         criteriaTotal,
         completedAt,
-        lastBenchmark: null,
+        lastBenchmark: benchmarkMap.has(m.id)
+          ? { bestOpsPerSec: benchmarkMap.get(m.id)! }
+          : null,
       }
     })
 

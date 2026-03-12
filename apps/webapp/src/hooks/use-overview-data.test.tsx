@@ -25,7 +25,6 @@ const MOCK_OVERVIEW: OverviewData = {
   criteriaProgress: null,
   sessionSummary: null,
   lastBenchmark: null,
-  benchmarkTrend: null,
 }
 
 describe('useOverviewData', () => {

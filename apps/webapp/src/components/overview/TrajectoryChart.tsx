@@ -1,4 +1,4 @@
-import { useId, useMemo } from 'react'
+import { useId } from 'react'
 import { cn } from '@mycscompanion/ui/src/lib/utils'
 
 interface TrajectoryDataPointInput {
@@ -11,6 +11,7 @@ interface TrajectoryChartProps {
   readonly dataPoints: ReadonlyArray<TrajectoryDataPointInput>
   readonly currentMilestoneNumber?: number
   readonly className?: string
+  readonly animate?: boolean
 }
 
 interface TrajectoryDataTableProps {
@@ -53,16 +54,13 @@ function computeYPositions(values: ReadonlyArray<number>): ReadonlyArray<number>
   })
 }
 
-function TrajectoryChart({ dataPoints, currentMilestoneNumber, className }: TrajectoryChartProps): React.ReactElement {
+function TrajectoryChart({ dataPoints, currentMilestoneNumber, className, animate = false }: TrajectoryChartProps): React.ReactElement {
   const filterId = useId()
   const glowId = `glow-${filterId.replace(/:/g, '')}`
-  const hasReducedMotion = useMemo(
-    () =>
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-    [],
-  )
+  const hasReducedMotion =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
   if (dataPoints.length === 0) {
     return (
@@ -85,6 +83,19 @@ function TrajectoryChart({ dataPoints, currentMilestoneNumber, className }: Traj
 
   const polylinePoints = xPositions.map((x, i) => `${x},${yPositions[i]}`).join(' ')
 
+  const shouldAnimate = animate && !hasReducedMotion
+
+  // Calculate approximate line length for stroke-dasharray animation
+  let lineLength = 0
+  if (shouldAnimate && xPositions.length >= 2) {
+    for (let i = 1; i < xPositions.length; i++) {
+      const dx = (xPositions[i] ?? 0) - (xPositions[i - 1] ?? 0)
+      const dy = (yPositions[i] ?? 0) - (yPositions[i - 1] ?? 0)
+      lineLength += Math.sqrt(dx * dx + dy * dy)
+    }
+    lineLength = Math.ceil(lineLength)
+  }
+
   return (
     <div className={cn('w-full rounded-lg border border-border bg-card p-4', 'lg:max-w-[400px] xl:max-w-[500px]', className)}>
       <svg
@@ -93,6 +104,14 @@ function TrajectoryChart({ dataPoints, currentMilestoneNumber, className }: Traj
         role="img"
         aria-label="Benchmark trajectory across milestones"
       >
+        {/* Animation keyframes */}
+        {shouldAnimate ? (
+          <style>{`
+            @keyframes drawLine { from { stroke-dashoffset: ${lineLength} } to { stroke-dashoffset: 0 } }
+            @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+          `}</style>
+        ) : null}
+
         {/* Glow filter definition */}
         {!hasReducedMotion ? (
           <defs>
@@ -115,6 +134,11 @@ function TrajectoryChart({ dataPoints, currentMilestoneNumber, className }: Traj
             stroke="#34d399"
             strokeWidth="2"
             opacity="0.6"
+            style={shouldAnimate ? {
+              strokeDasharray: lineLength,
+              strokeDashoffset: 0,
+              animation: `drawLine 1s ease-out forwards`,
+            } : undefined}
           />
         ) : null}
 
@@ -127,7 +151,13 @@ function TrajectoryChart({ dataPoints, currentMilestoneNumber, className }: Traj
           const formattedOps = `${numberFormatter.format(point.bestOpsPerSec)} ops/sec`
 
           return (
-            <g key={point.milestoneNumber}>
+            <g
+              key={point.milestoneNumber}
+              style={shouldAnimate ? {
+                opacity: 0,
+                animation: `fadeIn 0.3s ease-out ${i * 200}ms forwards`,
+              } : undefined}
+            >
               {/* Data point circle */}
               <circle
                 data-testid={`trajectory-point-${point.milestoneNumber}`}

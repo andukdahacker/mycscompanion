@@ -61,6 +61,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  await db.deleteFrom('benchmark_results').execute()
   await db.deleteFrom('session_summaries').execute()
   await db.deleteFrom('code_snapshots').execute()
   await db.deleteFrom('user_milestones').execute()
@@ -251,7 +252,7 @@ describe('GET /api/progress/track-progress', () => {
     expect(response.statusCode).toBe(401)
   })
 
-  it('should return null for lastBenchmark on all milestones', async () => {
+  it('should return null for lastBenchmark when no benchmark results exist', async () => {
     const response = await app.inject({
       method: 'GET',
       url: '/api/progress/track-progress',
@@ -261,6 +262,93 @@ describe('GET /api/progress/track-progress', () => {
     expect(response.statusCode).toBe(200)
     const body = response.json()
     expect(body.milestones.every((m: { lastBenchmark: null }) => m.lastBenchmark === null)).toBe(true)
+  })
+
+  it('should return lastBenchmark with bestOpsPerSec for milestone with benchmark data', async () => {
+    const subId = generateId()
+    await db
+      .insertInto('submissions')
+      .values({ id: subId, user_id: TEST_UID, milestone_id: milestone1Id, code: 'package main', status: 'completed' })
+      .execute()
+
+    await db
+      .insertInto('benchmark_results')
+      .values({
+        id: generateId(),
+        submission_id: subId,
+        user_id: TEST_UID,
+        milestone_id: milestone1Id,
+        benchmark_name: 'sequential-inserts',
+        raw_metrics: JSON.stringify({ opsPerSec: 9500, userMedian: 9500, referenceMedian: 10000, p50LatencyUs: 100, p99LatencyUs: 350 }),
+        normalized_ratio: '0.9500',
+        reference_version: 'v1',
+        created_at: new Date('2026-03-01T10:00:00Z'),
+      })
+      .execute()
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/progress/track-progress',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.milestones[0].lastBenchmark).not.toBeNull()
+    expect(body.milestones[0].lastBenchmark.bestOpsPerSec).toBe(9500)
+    // Upcoming milestones should still be null
+    expect(body.milestones[1].lastBenchmark).toBeNull()
+    expect(body.milestones[2].lastBenchmark).toBeNull()
+  })
+
+  it('should return best (max) ops/sec across multiple benchmark runs', async () => {
+    const subId1 = generateId()
+    const subId2 = generateId()
+    await db
+      .insertInto('submissions')
+      .values([
+        { id: subId1, user_id: TEST_UID, milestone_id: milestone1Id, code: 'package main', status: 'completed' },
+        { id: subId2, user_id: TEST_UID, milestone_id: milestone1Id, code: 'package main', status: 'completed' },
+      ])
+      .execute()
+
+    await db
+      .insertInto('benchmark_results')
+      .values([
+        {
+          id: generateId(),
+          submission_id: subId1,
+          user_id: TEST_UID,
+          milestone_id: milestone1Id,
+          benchmark_name: 'sequential-inserts',
+          raw_metrics: JSON.stringify({ opsPerSec: 8000, userMedian: 8000, referenceMedian: 10000, p50LatencyUs: 120, p99LatencyUs: 400 }),
+          normalized_ratio: '0.8000',
+          reference_version: 'v1',
+          created_at: new Date('2026-03-01T10:00:00Z'),
+        },
+        {
+          id: generateId(),
+          submission_id: subId2,
+          user_id: TEST_UID,
+          milestone_id: milestone1Id,
+          benchmark_name: 'sequential-inserts',
+          raw_metrics: JSON.stringify({ opsPerSec: 12400, userMedian: 12400, referenceMedian: 10000, p50LatencyUs: 80, p99LatencyUs: 300 }),
+          normalized_ratio: '1.2400',
+          reference_version: 'v1',
+          created_at: new Date('2026-03-02T10:00:00Z'),
+        },
+      ])
+      .execute()
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/progress/track-progress',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.milestones[0].lastBenchmark.bestOpsPerSec).toBe(12400)
   })
 
   it('should return correct completedCount and totalCount', async () => {

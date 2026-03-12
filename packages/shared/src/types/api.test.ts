@@ -5,9 +5,12 @@ import type {
   CompleteMilestoneRequest,
   CompleteMilestoneResponse,
   OverviewData,
+  OverviewBenchmarkData,
   OverviewMilestoneInfo,
   OverviewCriteriaProgress,
   OverviewVariant,
+  MilestoneProgressInfo,
+  MilestoneProgressBenchmark,
 } from './api.js'
 
 describe('Milestone completion types', () => {
@@ -126,13 +129,40 @@ describe('Overview types', () => {
       criteriaProgress: null,
       sessionSummary: null,
       lastBenchmark: null,
-      benchmarkTrend: null,
     }
     expect(data.variant).toBe('first-time')
     expect(data.criteriaProgress).toBeNull()
   })
 
-  it('should compile OverviewData with milestone-start variant', () => {
+  it('should compile OverviewData with milestone-start variant and benchmark data', () => {
+    const data: OverviewData = {
+      variant: 'milestone-start',
+      milestone: {
+        id: 'ms-2',
+        slug: '02-storage-engine',
+        title: 'Storage Engine',
+        position: 2,
+        briefExcerpt: 'Build a storage engine...',
+        csConceptLabel: 'Data Structures',
+      },
+      criteriaProgress: {
+        met: 3,
+        total: 5,
+        nextCriterionName: 'range-scan',
+      },
+      sessionSummary: null,
+      lastBenchmark: {
+        opsPerSec: 12400,
+        normalizedRatio: 1.25,
+        trend: 'up',
+      },
+    }
+    expect(data.variant).toBe('milestone-start')
+    expect(data.criteriaProgress?.met).toBe(3)
+    expect(data.lastBenchmark?.opsPerSec).toBe(12400)
+  })
+
+  it('should compile OverviewData with null lastBenchmark', () => {
     const data: OverviewData = {
       variant: 'milestone-start',
       milestone: {
@@ -150,10 +180,17 @@ describe('Overview types', () => {
       },
       sessionSummary: null,
       lastBenchmark: null,
-      benchmarkTrend: null,
     }
-    expect(data.variant).toBe('milestone-start')
-    expect(data.criteriaProgress?.met).toBe(3)
+    expect(data.lastBenchmark).toBeNull()
+  })
+
+  it('should compile OverviewBenchmarkData with all trend values', () => {
+    const up: OverviewBenchmarkData = { opsPerSec: 1000, normalizedRatio: 1.5, trend: 'up' }
+    const down: OverviewBenchmarkData = { opsPerSec: 800, normalizedRatio: 0.9, trend: 'down' }
+    const flat: OverviewBenchmarkData = { opsPerSec: 1000, normalizedRatio: 1.0, trend: 'flat' }
+    expect(up.trend).toBe('up')
+    expect(down.trend).toBe('down')
+    expect(flat.trend).toBe('flat')
   })
 
   it('should accept valid OverviewVariant values', () => {
@@ -161,5 +198,44 @@ describe('Overview types', () => {
     const milestoneStart: OverviewVariant = 'milestone-start'
     expect(firstTime).toBe('first-time')
     expect(milestoneStart).toBe('milestone-start')
+  })
+})
+
+describe('MilestoneProgress types', () => {
+  it('should compile MilestoneProgressInfo with benchmark data', () => {
+    const info: MilestoneProgressInfo = {
+      id: 'ms-1',
+      slug: '01-kv-store',
+      title: 'Simple Key-Value Store',
+      position: 1,
+      description: 'Build a simple key-value store',
+      status: 'completed',
+      criteriaMet: 5,
+      criteriaTotal: 5,
+      completedAt: '2026-03-05T10:00:00.000Z',
+      lastBenchmark: { bestOpsPerSec: 12400 },
+    }
+    expect(info.lastBenchmark?.bestOpsPerSec).toBe(12400)
+  })
+
+  it('should compile MilestoneProgressInfo with null benchmark', () => {
+    const info: MilestoneProgressInfo = {
+      id: 'ms-2',
+      slug: '02-storage-engine',
+      title: 'Storage Engine',
+      position: 2,
+      description: 'Build a storage engine',
+      status: 'upcoming',
+      criteriaMet: null,
+      criteriaTotal: null,
+      completedAt: null,
+      lastBenchmark: null,
+    }
+    expect(info.lastBenchmark).toBeNull()
+  })
+
+  it('should compile MilestoneProgressBenchmark', () => {
+    const benchmark: MilestoneProgressBenchmark = { bestOpsPerSec: 9500 }
+    expect(benchmark.bestOpsPerSec).toBe(9500)
   })
 })

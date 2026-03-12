@@ -62,6 +62,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.restoreAllMocks()
+  await db.deleteFrom('benchmark_results').execute()
   await db.deleteFrom('session_summaries').execute()
   await db.deleteFrom('code_snapshots').execute()
   await db.deleteFrom('user_milestones').execute()
@@ -96,7 +97,6 @@ describe('GET /api/progress/overview', () => {
     expect(body.criteriaProgress).toBeNull()
     expect(body.sessionSummary).toBeNull()
     expect(body.lastBenchmark).toBeNull()
-    expect(body.benchmarkTrend).toBeNull()
   })
 
   it('should return milestone-start variant when user has submissions', async () => {
@@ -239,7 +239,7 @@ describe('GET /api/progress/overview', () => {
     expect(body.criteriaProgress.nextCriterionName).toBeNull()
   })
 
-  it('should return null for lastBenchmark and benchmarkTrend placeholders', async () => {
+  it('should return null for lastBenchmark when no benchmark results exist', async () => {
     const response = await app.inject({
       method: 'GET',
       url: '/api/progress/overview',
@@ -249,7 +249,6 @@ describe('GET /api/progress/overview', () => {
     expect(response.statusCode).toBe(200)
     const body = response.json()
     expect(body.lastBenchmark).toBeNull()
-    expect(body.benchmarkTrend).toBeNull()
   })
 
   it('should return sessionSummary when summary exists for active milestone', async () => {
@@ -299,6 +298,230 @@ describe('GET /api/progress/overview', () => {
     expect(response.statusCode).toBe(200)
     const body = response.json()
     expect(body.sessionSummary).toBeNull()
+  })
+
+  it('should return lastBenchmark with ops/sec and trend when benchmark results exist', async () => {
+    const subId = generateId()
+    await db
+      .insertInto('submissions')
+      .values({
+        id: subId,
+        user_id: userId,
+        milestone_id: milestoneId,
+        code: 'package main',
+        status: 'completed',
+      })
+      .execute()
+
+    await db
+      .insertInto('benchmark_results')
+      .values({
+        id: generateId(),
+        submission_id: subId,
+        user_id: userId,
+        milestone_id: milestoneId,
+        benchmark_name: 'sequential-inserts',
+        raw_metrics: JSON.stringify({ opsPerSec: 12400, userMedian: 12400, referenceMedian: 10000, p50LatencyUs: 80, p99LatencyUs: 300 }),
+        normalized_ratio: '1.2400',
+        reference_version: 'v1',
+        created_at: new Date('2026-03-01T10:00:00Z'),
+      })
+      .execute()
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/progress/overview',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.lastBenchmark).not.toBeNull()
+    expect(body.lastBenchmark.opsPerSec).toBe(12400)
+    expect(body.lastBenchmark.normalizedRatio).toBeCloseTo(1.24)
+  })
+
+  it('should return trend up when latest ops/sec is greater than previous', async () => {
+    const subId1 = generateId()
+    const subId2 = generateId()
+    await db
+      .insertInto('submissions')
+      .values([
+        { id: subId1, user_id: userId, milestone_id: milestoneId, code: 'package main', status: 'completed' },
+        { id: subId2, user_id: userId, milestone_id: milestoneId, code: 'package main', status: 'completed' },
+      ])
+      .execute()
+
+    await db
+      .insertInto('benchmark_results')
+      .values([
+        {
+          id: generateId(),
+          submission_id: subId1,
+          user_id: userId,
+          milestone_id: milestoneId,
+          benchmark_name: 'sequential-inserts',
+          raw_metrics: JSON.stringify({ opsPerSec: 8000, userMedian: 8000, referenceMedian: 10000, p50LatencyUs: 120, p99LatencyUs: 400 }),
+          normalized_ratio: '0.8000',
+          reference_version: 'v1',
+          created_at: new Date('2026-03-01T10:00:00Z'),
+        },
+        {
+          id: generateId(),
+          submission_id: subId2,
+          user_id: userId,
+          milestone_id: milestoneId,
+          benchmark_name: 'sequential-inserts',
+          raw_metrics: JSON.stringify({ opsPerSec: 12400, userMedian: 12400, referenceMedian: 10000, p50LatencyUs: 80, p99LatencyUs: 300 }),
+          normalized_ratio: '1.2400',
+          reference_version: 'v1',
+          created_at: new Date('2026-03-02T10:00:00Z'),
+        },
+      ])
+      .execute()
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/progress/overview',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.lastBenchmark.trend).toBe('up')
+  })
+
+  it('should return trend down when latest ops/sec is less than previous', async () => {
+    const subId1 = generateId()
+    const subId2 = generateId()
+    await db
+      .insertInto('submissions')
+      .values([
+        { id: subId1, user_id: userId, milestone_id: milestoneId, code: 'package main', status: 'completed' },
+        { id: subId2, user_id: userId, milestone_id: milestoneId, code: 'package main', status: 'completed' },
+      ])
+      .execute()
+
+    await db
+      .insertInto('benchmark_results')
+      .values([
+        {
+          id: generateId(),
+          submission_id: subId1,
+          user_id: userId,
+          milestone_id: milestoneId,
+          benchmark_name: 'sequential-inserts',
+          raw_metrics: JSON.stringify({ opsPerSec: 12400, userMedian: 12400, referenceMedian: 10000, p50LatencyUs: 80, p99LatencyUs: 300 }),
+          normalized_ratio: '1.2400',
+          reference_version: 'v1',
+          created_at: new Date('2026-03-01T10:00:00Z'),
+        },
+        {
+          id: generateId(),
+          submission_id: subId2,
+          user_id: userId,
+          milestone_id: milestoneId,
+          benchmark_name: 'sequential-inserts',
+          raw_metrics: JSON.stringify({ opsPerSec: 6000, userMedian: 6000, referenceMedian: 10000, p50LatencyUs: 160, p99LatencyUs: 500 }),
+          normalized_ratio: '0.6000',
+          reference_version: 'v1',
+          created_at: new Date('2026-03-02T10:00:00Z'),
+        },
+      ])
+      .execute()
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/progress/overview',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.lastBenchmark.trend).toBe('down')
+  })
+
+  it('should return trend flat when only one benchmark result exists', async () => {
+    const subId = generateId()
+    await db
+      .insertInto('submissions')
+      .values({ id: subId, user_id: userId, milestone_id: milestoneId, code: 'package main', status: 'completed' })
+      .execute()
+
+    await db
+      .insertInto('benchmark_results')
+      .values({
+        id: generateId(),
+        submission_id: subId,
+        user_id: userId,
+        milestone_id: milestoneId,
+        benchmark_name: 'sequential-inserts',
+        raw_metrics: JSON.stringify({ opsPerSec: 9000, userMedian: 9000, referenceMedian: 10000, p50LatencyUs: 110, p99LatencyUs: 350 }),
+        normalized_ratio: '0.9000',
+        reference_version: 'v1',
+        created_at: new Date('2026-03-01T10:00:00Z'),
+      })
+      .execute()
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/progress/overview',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.lastBenchmark.trend).toBe('flat')
+  })
+
+  it('should return trend flat when latest equals previous ops/sec', async () => {
+    const subId1 = generateId()
+    const subId2 = generateId()
+    await db
+      .insertInto('submissions')
+      .values([
+        { id: subId1, user_id: userId, milestone_id: milestoneId, code: 'package main', status: 'completed' },
+        { id: subId2, user_id: userId, milestone_id: milestoneId, code: 'package main', status: 'completed' },
+      ])
+      .execute()
+
+    await db
+      .insertInto('benchmark_results')
+      .values([
+        {
+          id: generateId(),
+          submission_id: subId1,
+          user_id: userId,
+          milestone_id: milestoneId,
+          benchmark_name: 'sequential-inserts',
+          raw_metrics: JSON.stringify({ opsPerSec: 9000, userMedian: 9000, referenceMedian: 10000, p50LatencyUs: 110, p99LatencyUs: 350 }),
+          normalized_ratio: '0.9000',
+          reference_version: 'v1',
+          created_at: new Date('2026-03-01T10:00:00Z'),
+        },
+        {
+          id: generateId(),
+          submission_id: subId2,
+          user_id: userId,
+          milestone_id: milestoneId,
+          benchmark_name: 'sequential-inserts',
+          raw_metrics: JSON.stringify({ opsPerSec: 9000, userMedian: 9000, referenceMedian: 10000, p50LatencyUs: 110, p99LatencyUs: 350 }),
+          normalized_ratio: '0.9000',
+          reference_version: 'v1',
+          created_at: new Date('2026-03-02T10:00:00Z'),
+        },
+      ])
+      .execute()
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/progress/overview',
+      headers: { authorization: 'Bearer valid-token' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.lastBenchmark.trend).toBe('flat')
   })
 
   it('should return 401 when no auth token provided', async () => {

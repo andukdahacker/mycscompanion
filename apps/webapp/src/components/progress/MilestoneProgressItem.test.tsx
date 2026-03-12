@@ -69,9 +69,14 @@ describe('MilestoneProgressItem', () => {
     expect(screen.queryByText(/met$/)).not.toBeInTheDocument()
   })
 
-  it('should show benchmark placeholder em-dash for non-upcoming milestones', () => {
+  it('should show em-dash when lastBenchmark is null for non-upcoming milestones', () => {
     renderItem({ status: 'in-progress', criteriaMet: 1, criteriaTotal: 3 })
     expect(screen.getByText('—')).toBeInTheDocument()
+  })
+
+  it('should render formatted ops/sec when lastBenchmark present', () => {
+    renderItem({ status: 'in-progress', criteriaMet: 1, criteriaTotal: 3, lastBenchmark: { bestOpsPerSec: 12400 } })
+    expect(screen.getByText('12,400 ops/sec')).toBeInTheDocument()
   })
 
   it('should show "Continue Building" link for in-progress milestone with submissions', () => {

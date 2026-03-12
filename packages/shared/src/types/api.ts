@@ -88,18 +88,27 @@ export interface OverviewCriteriaProgress {
   readonly nextCriterionName: string | null
 }
 
+export interface OverviewBenchmarkData {
+  readonly opsPerSec: number
+  readonly normalizedRatio: number
+  readonly trend: 'up' | 'down' | 'flat'
+}
+
 export interface OverviewData {
   readonly variant: OverviewVariant
   readonly milestone: OverviewMilestoneInfo
   readonly criteriaProgress: OverviewCriteriaProgress | null  // null for first-time
   readonly sessionSummary: string | null    // Placeholder — populated by Epic 5
-  readonly lastBenchmark: null              // Placeholder — populated by Epic 7
-  readonly benchmarkTrend: null             // Placeholder — populated by Epic 7
+  readonly lastBenchmark: OverviewBenchmarkData | null
 }
 
 // --- Track Progress ---
 
 export type MilestoneStatus = 'completed' | 'in-progress' | 'upcoming'
+
+export interface MilestoneProgressBenchmark {
+  readonly bestOpsPerSec: number
+}
 
 export interface MilestoneProgressInfo {
   readonly id: string
@@ -111,7 +120,7 @@ export interface MilestoneProgressInfo {
   readonly criteriaMet: number | null      // null for upcoming
   readonly criteriaTotal: number | null    // null for upcoming
   readonly completedAt: string | null      // ISO 8601, null if not completed
-  readonly lastBenchmark: null             // Placeholder — Epic 7
+  readonly lastBenchmark: MilestoneProgressBenchmark | null
 }
 
 export interface TrackProgressData {

@@ -2,6 +2,8 @@ import { useNavigate, Link } from 'react-router'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
 import type { OverviewData } from '@mycscompanion/shared'
 
+const numberFormatter = new Intl.NumberFormat()
+
 interface MilestoneStartOverviewProps {
   readonly data: OverviewData
 }
@@ -54,7 +56,19 @@ function MilestoneStartOverview({ data }: MilestoneStartOverviewProps): React.Re
 
           <div aria-label="Benchmark">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Benchmark</span>
-            <p className="text-sm text-muted-foreground">—</p>
+            {data.lastBenchmark ? (
+              <p className="text-sm font-semibold text-foreground">
+                {numberFormatter.format(data.lastBenchmark.opsPerSec)} ops/sec
+                <span
+                  className="ml-1"
+                  aria-label={`Trend: ${data.lastBenchmark.trend}`}
+                >
+                  {data.lastBenchmark.trend === 'up' ? '\u2191' : data.lastBenchmark.trend === 'down' ? '\u2193' : '\u2192'}
+                </span>
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">No benchmarks yet</p>
+            )}
           </div>
 
           <div aria-label="Next step">

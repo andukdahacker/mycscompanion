@@ -109,8 +109,8 @@ export async function overviewRoutes(
     // Backfill summary if missing (browser crash recovery)
     await backfillLatestSessionSummary(db, uid, activeMilestone.id)
 
-    // Load content for brief excerpt, CS concept label, and latest session summary
-    const [brief, metadata, latestSummary] = await Promise.all([
+    // Load content, session summary, and benchmark data in parallel
+    const [brief, metadata, latestSummary, recentBenchmarks] = await Promise.all([
       contentLoader.loadMilestoneBrief(activeMilestone.slug),
       contentLoader.loadMetadata(activeMilestone.slug),
       db
@@ -121,9 +121,40 @@ export async function overviewRoutes(
         .orderBy('created_at', 'desc')
         .limit(1)
         .executeTakeFirst(),
+      db
+        .selectFrom('benchmark_results')
+        .select(['raw_metrics', 'normalized_ratio'])
+        .where('user_id', '=', uid)
+        .where('milestone_id', '=', activeMilestone.id)
+        .orderBy('created_at', 'desc')
+        .limit(2)
+        .execute(),
     ])
 
     const briefExcerpt = brief ? brief.slice(0, BRIEF_EXCERPT_LENGTH) : ''
+
+    let lastBenchmark: OverviewData['lastBenchmark'] = null
+    if (recentBenchmarks.length > 0) {
+      try {
+        const latest = recentBenchmarks[0]!
+        const raw = typeof latest.raw_metrics === 'string' ? JSON.parse(latest.raw_metrics) : latest.raw_metrics
+        const opsPerSec = typeof raw?.opsPerSec === 'number' ? raw.opsPerSec : 0
+        const normalizedRatio = parseFloat(String(latest.normalized_ratio))
+
+        let trend: 'up' | 'down' | 'flat' = 'flat'
+        if (recentBenchmarks.length >= 2) {
+          const previous = recentBenchmarks[1]!
+          const prevRaw = typeof previous.raw_metrics === 'string' ? JSON.parse(previous.raw_metrics) : previous.raw_metrics
+          const prevOps = typeof prevRaw?.opsPerSec === 'number' ? prevRaw.opsPerSec : 0
+          if (opsPerSec > prevOps) trend = 'up'
+          else if (opsPerSec < prevOps) trend = 'down'
+        }
+
+        lastBenchmark = { opsPerSec, normalizedRatio, trend }
+      } catch {
+        // Malformed raw_metrics JSONB — treat as no benchmark data
+      }
+    }
 
     // Determine criteria progress for milestone-start variant
     let criteriaProgress: OverviewCriteriaProgress | null = null
@@ -163,8 +194,7 @@ export async function overviewRoutes(
       },
       criteriaProgress,
       sessionSummary: latestSummary?.summary_text ?? null,
-      lastBenchmark: null,
-      benchmarkTrend: null,
+      lastBenchmark,
     }
 
     return result

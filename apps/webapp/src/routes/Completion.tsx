@@ -31,6 +31,9 @@ function Completion(): React.ReactElement {
   }
 
   const isLastMilestone = data.nextMilestone === null
+  const currentMilestoneBenchmark = trajectoryDataPoints.find(
+    (dp) => dp.milestoneNumber === data.milestoneNumber
+  ) ?? null
 
   function handleContinue(): void {
     navigate('/overview', { replace: true })
@@ -66,6 +69,35 @@ function Completion(): React.ReactElement {
           </ul>
         </section>
 
+        {/* Benchmark Summary */}
+        {currentMilestoneBenchmark ? (
+          <section aria-label="Benchmark summary">
+            <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-muted-foreground">
+              Benchmark Performance
+            </h2>
+            <div className="flex items-baseline gap-6">
+              <div>
+                <span className="text-xs text-muted-foreground">Best</span>
+                <p className="text-lg font-semibold text-foreground">
+                  {new Intl.NumberFormat().format(currentMilestoneBenchmark.bestOpsPerSec)} ops/sec
+                </p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Ratio</span>
+                <p className="text-sm font-semibold text-foreground">
+                  {currentMilestoneBenchmark.bestNormalizedRatio.toFixed(2)}x ref
+                </p>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Runs</span>
+                <p className="text-sm font-semibold text-foreground">
+                  {currentMilestoneBenchmark.totalSubmissions}
+                </p>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
         {/* Trajectory Chart */}
         <section aria-label="Performance trajectory">
           {trajectoryLoading ? (
@@ -84,6 +116,7 @@ function Completion(): React.ReactElement {
               <TrajectoryChart
                 dataPoints={trajectoryDataPoints}
                 currentMilestoneNumber={data.milestoneNumber}
+                animate
               />
               {trajectoryDataPoints.length > 0 ? (
                 <TrajectoryDataTable dataPoints={trajectoryDataPoints} />

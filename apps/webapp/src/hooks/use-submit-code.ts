@@ -206,6 +206,8 @@ function useSubmitCode(): UseSubmitCodeResult {
           queryClient.invalidateQueries({ queryKey: ['benchmark', 'history'] })
           queryClient.invalidateQueries({ queryKey: ['benchmark', 'previous'] })
           queryClient.invalidateQueries({ queryKey: ['benchmark', 'trajectory'] })
+          queryClient.invalidateQueries({ queryKey: ['progress', 'overview'] })
+          queryClient.invalidateQueries({ queryKey: ['progress', 'track-progress'] })
           announceToScreenReader(
             `Benchmark complete: ${Intl.NumberFormat().format(event.opsPerSec)} ops per second, ` +
             `${event.normalizedRatio.toFixed(2)}x reference implementation`,

@@ -243,4 +243,43 @@ describe('Completion', () => {
 
     expect(mockNavigate).toHaveBeenCalledWith('/overview', { replace: true })
   })
+
+  it('should pass animate prop to TrajectoryChart', async () => {
+    renderCompletion()
+
+    await screen.findByText(/Simple Key-Value Store — Complete/)
+    const svg = await screen.findByRole('img', { name: /benchmark trajectory/i })
+    // When animate is true and motion not reduced, style tag with keyframes should exist
+    const style = svg.querySelector('style')
+    expect(style).not.toBeNull()
+    expect(style?.textContent).toContain('drawLine')
+  })
+
+  it('should render benchmark summary when trajectory data contains current milestone', async () => {
+    renderCompletion()
+
+    await screen.findByText(/Simple Key-Value Store — Complete/)
+    const section = await screen.findByLabelText('Benchmark summary')
+    expect(section).toBeDefined()
+    expect(section.textContent).toContain('4,200 ops/sec')
+    expect(section.textContent).toContain('0.42x ref')
+    expect(section.textContent).toContain('2')
+  })
+
+  it('should not render benchmark summary when no trajectory data for current milestone', async () => {
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes('/benchmark-results/trajectory')) {
+        return Promise.resolve({ dataPoints: [
+          { milestoneId: 'ms-2', milestoneName: 'Other', milestoneNumber: 2, benchmarkName: 'test', bestOpsPerSec: 100, bestNormalizedRatio: 0.1, totalSubmissions: 1, achievedAt: '2026-01-01T00:00:00Z' },
+        ] })
+      }
+      return Promise.resolve(MOCK_COMPLETION)
+    })
+    renderCompletion()
+
+    await screen.findByText(/Simple Key-Value Store — Complete/)
+    // Wait a tick for trajectory to load
+    await screen.findByRole('img', { name: /benchmark trajectory/i })
+    expect(screen.queryByLabelText('Benchmark summary')).toBeNull()
+  })
 })

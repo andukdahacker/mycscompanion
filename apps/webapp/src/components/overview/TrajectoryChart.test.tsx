@@ -132,6 +132,71 @@ describe('TrajectoryChart', () => {
     const svg = screen.getByRole('img')
     expect(svg.getAttribute('aria-label')).toBe('Benchmark trajectory across milestones')
   })
+
+  it('should render all elements immediately when animate is false', () => {
+    render(<TrajectoryChart dataPoints={sampleDataPoints} />)
+
+    const svg = screen.getByRole('img')
+    // No style tag with animation keyframes
+    expect(svg.querySelector('style')).toBeNull()
+    // Polyline should not have strokeDasharray
+    const polyline = screen.getByTestId('trajectory-line')
+    expect(polyline.style.strokeDasharray).toBeFalsy()
+  })
+
+  it('should render all elements immediately when prefers-reduced-motion is active even if animate is true', () => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(prefers-reduced-motion: reduce)',
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    })
+
+    render(<TrajectoryChart dataPoints={sampleDataPoints} animate />)
+
+    const svg = screen.getByRole('img')
+    expect(svg.querySelector('style')).toBeNull()
+    const polyline = screen.getByTestId('trajectory-line')
+    expect(polyline.style.strokeDasharray).toBeFalsy()
+  })
+
+  it('should apply animation classes/styles when animate is true and motion not reduced', () => {
+    render(<TrajectoryChart dataPoints={sampleDataPoints} animate />)
+
+    const svg = screen.getByRole('img')
+    const style = svg.querySelector('style')
+    expect(style).not.toBeNull()
+    expect(style?.textContent).toContain('drawLine')
+    expect(style?.textContent).toContain('fadeIn')
+  })
+
+  it('should apply stroke-dasharray on polyline when animating', () => {
+    render(<TrajectoryChart dataPoints={sampleDataPoints} animate />)
+
+    const polyline = screen.getByTestId('trajectory-line')
+    expect(polyline.style.strokeDasharray).toBeTruthy()
+    expect(polyline.style.animation).toContain('drawLine')
+  })
+
+  it('should apply staggered animation delay to data point groups', () => {
+    const { container } = render(<TrajectoryChart dataPoints={sampleDataPoints} animate />)
+
+    const svg = container.querySelector('svg')!
+    // Get all <g> elements that wrap data points
+    const groups = svg.querySelectorAll('g[style]')
+    expect(groups.length).toBe(3)
+    // Check animation values contain staggered delays
+    expect(groups[0]?.getAttribute('style')).toContain('0ms')
+    expect(groups[1]?.getAttribute('style')).toContain('200ms')
+    expect(groups[2]?.getAttribute('style')).toContain('400ms')
+  })
 })
 
 describe('TrajectoryDataTable', () => {

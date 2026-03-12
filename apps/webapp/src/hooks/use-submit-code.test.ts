@@ -210,6 +210,46 @@ describe('useSubmitCode (benchmark)', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['benchmark', 'trajectory'] })
   })
 
+  it('should invalidate overview queries on benchmark_result event', async () => {
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const { onEvent } = await submitAndCapture()
+
+    act(() => {
+      onEvent({
+        type: 'benchmark_result',
+        phase: 'benchmarking',
+        opsPerSec: 12400,
+        normalizedRatio: 0.82,
+        userMedian: 150,
+        referenceMedian: 120,
+        data: '',
+        sequenceId: 1,
+      })
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['progress', 'overview'] })
+  })
+
+  it('should invalidate track-progress queries on benchmark_result event', async () => {
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const { onEvent } = await submitAndCapture()
+
+    act(() => {
+      onEvent({
+        type: 'benchmark_result',
+        phase: 'benchmarking',
+        opsPerSec: 12400,
+        normalizedRatio: 0.82,
+        userMedian: 150,
+        referenceMedian: 120,
+        data: '',
+        sequenceId: 1,
+      })
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['progress', 'track-progress'] })
+  })
+
   it('should reset benchmark cache on new submission', async () => {
     const { hook, onEvent } = await submitAndCapture()
 

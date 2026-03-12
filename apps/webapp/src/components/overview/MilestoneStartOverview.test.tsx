@@ -31,7 +31,6 @@ const MOCK_DATA: OverviewData = {
   },
   sessionSummary: null,
   lastBenchmark: null,
-  benchmarkTrend: null,
 }
 
 describe('MilestoneStartOverview', () => {
@@ -100,12 +99,52 @@ describe('MilestoneStartOverview', () => {
     expect(screen.getByText('All criteria met')).toBeInTheDocument()
   })
 
-  it('should show benchmark em-dash placeholder in inline stats row', () => {
+  it('should show "No benchmarks yet" when lastBenchmark is null', () => {
     renderComponent()
 
     const benchmarkSection = screen.getByLabelText('Benchmark')
     expect(benchmarkSection).toBeInTheDocument()
-    expect(benchmarkSection.textContent).toContain('—')
+    expect(benchmarkSection.textContent).toContain('No benchmarks yet')
+  })
+
+  it('should render ops/sec with comma formatting when lastBenchmark present', () => {
+    renderComponent({
+      ...MOCK_DATA,
+      lastBenchmark: { opsPerSec: 12400, normalizedRatio: 1.24, trend: 'up' },
+    })
+
+    const benchmarkSection = screen.getByLabelText('Benchmark')
+    expect(benchmarkSection.textContent).toContain('12,400 ops/sec')
+  })
+
+  it('should render up arrow when trend is up', () => {
+    renderComponent({
+      ...MOCK_DATA,
+      lastBenchmark: { opsPerSec: 12400, normalizedRatio: 1.24, trend: 'up' },
+    })
+
+    expect(screen.getByLabelText('Trend: up')).toBeInTheDocument()
+    expect(screen.getByLabelText('Trend: up').textContent).toBe('\u2191')
+  })
+
+  it('should render down arrow when trend is down', () => {
+    renderComponent({
+      ...MOCK_DATA,
+      lastBenchmark: { opsPerSec: 6000, normalizedRatio: 0.6, trend: 'down' },
+    })
+
+    expect(screen.getByLabelText('Trend: down')).toBeInTheDocument()
+    expect(screen.getByLabelText('Trend: down').textContent).toBe('\u2193')
+  })
+
+  it('should render right arrow when trend is flat', () => {
+    renderComponent({
+      ...MOCK_DATA,
+      lastBenchmark: { opsPerSec: 9000, normalizedRatio: 0.9, trend: 'flat' },
+    })
+
+    expect(screen.getByLabelText('Trend: flat')).toBeInTheDocument()
+    expect(screen.getByLabelText('Trend: flat').textContent).toBe('\u2192')
   })
 
   it('should render session summary text below stats when non-null', () => {

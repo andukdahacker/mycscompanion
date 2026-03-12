@@ -25,7 +25,6 @@ const FIRST_TIME_DATA: OverviewData = {
   criteriaProgress: null,
   sessionSummary: null,
   lastBenchmark: null,
-  benchmarkTrend: null,
 }
 
 const MILESTONE_START_DATA: OverviewData = {
@@ -45,7 +44,6 @@ const MILESTONE_START_DATA: OverviewData = {
   },
   sessionSummary: null,
   lastBenchmark: null,
-  benchmarkTrend: null,
 }
 
 describe('Overview', () => {

@@ -1,6 +1,8 @@
 import { Link } from 'react-router'
 import type { MilestoneProgressInfo } from '@mycscompanion/shared'
 
+const numberFormatter = new Intl.NumberFormat()
+
 interface MilestoneProgressItemProps {
   readonly milestone: MilestoneProgressInfo
 }
@@ -45,7 +47,13 @@ function MilestoneProgressItem({ milestone }: MilestoneProgressItemProps): React
               </div>
               <div>
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Benchmark</span>
-                <p className="text-sm text-muted-foreground">—</p>
+                {milestone.lastBenchmark ? (
+                  <p className="text-sm font-semibold text-foreground">
+                    {numberFormatter.format(milestone.lastBenchmark.bestOpsPerSec)} ops/sec
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">—</p>
+                )}
               </div>
             </div>
           ) : null}
