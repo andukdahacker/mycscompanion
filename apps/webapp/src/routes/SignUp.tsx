@@ -257,6 +257,12 @@ function SignUp(): React.ReactElement {
               Sign in
             </Link>
           </p>
+          <p className="mt-2 text-center text-body-sm text-muted-foreground">
+            By creating an account, you agree to our{' '}
+            <Link to="/privacy" className="text-foreground underline underline-offset-4 hover:text-primary">
+              Privacy Policy
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </div>

@@ -7,6 +7,7 @@ import { SignIn } from './routes/SignIn'
 import { SignUp } from './routes/SignUp'
 import { Onboarding } from './routes/Onboarding'
 import { NotReady } from './routes/NotReady'
+import { PrivacyPolicy } from './routes/PrivacyPolicy'
 import { WorkspaceSkeleton } from './components/workspace/WorkspaceSkeleton'
 import { CompletionSkeleton } from './components/completion/CompletionSkeleton'
 import { OverviewSkeleton } from './components/overview/OverviewSkeleton'
@@ -29,6 +30,7 @@ function App(): React.ReactElement {
         {/* Public routes */}
         <Route path="/sign-in" element={<SignIn />} />
         <Route path="/sign-up" element={<SignUp />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
 
         {/* Protected routes */}
         <Route element={<ProtectedRoute />}>

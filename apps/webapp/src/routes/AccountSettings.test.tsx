@@ -238,10 +238,10 @@ describe('AccountSettings', () => {
       expect(button.closest('button')?.disabled).toBeFalsy()
     })
 
-    it('should render disabled "Privacy Policy" link', () => {
+    it('should render enabled "Privacy Policy" link to /privacy', () => {
       renderComponent()
-      const button = screen.getByText('Privacy Policy (Coming soon)')
-      expect(button.closest('button')?.disabled).toBe(true)
+      const link = screen.getByRole('link', { name: /privacy policy/i })
+      expect(link.getAttribute('href')).toBe('/privacy')
     })
 
     it('should render disabled theme toggle placeholder', () => {

@@ -27,6 +27,7 @@ function renderSignUp(): ReturnType<typeof render> {
         <Route path="/sign-in" element={<div>Sign In Page</div>} />
         <Route path="/overview" element={<div>Overview Page</div>} />
         <Route path="/onboarding" element={<div>Onboarding Page</div>} />
+        <Route path="/privacy" element={<div>Privacy Page</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -229,6 +230,13 @@ describe('SignUp', () => {
     expect(screen.getByLabelText('Confirm password').hasAttribute('disabled')).toBe(true)
 
     resolveSignUp!({ user: { uid: 'new-uid' } })
+  })
+
+  it('should render privacy policy link', () => {
+    mockUseAuth.mockReturnValue({ user: null, loading: false })
+    renderSignUp()
+    const link = screen.getByRole('link', { name: /privacy policy/i })
+    expect(link.getAttribute('href')).toBe('/privacy')
   })
 
   it('should set aria-invalid on inputs with validation errors', async () => {

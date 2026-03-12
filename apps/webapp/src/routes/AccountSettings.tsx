@@ -200,8 +200,8 @@ function AccountSettings(): React.ReactElement {
               >
                 Delete Account
               </Button>
-              <Button variant="outline" className="w-full" disabled>
-                Privacy Policy (Coming soon)
+              <Button variant="outline" className="w-full" asChild>
+                <Link to="/privacy">Privacy Policy</Link>
               </Button>
             </section>
           </CardContent>
