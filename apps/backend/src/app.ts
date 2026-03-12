@@ -14,7 +14,7 @@ import { progressPlugin } from './plugins/progress/index.js'
 import { accountPlugin } from './plugins/account/index.js'
 import { adminPlugin } from './plugins/admin/index.js'
 import { redis } from './shared/redis.js'
-import { createBullMQConnection, createExecutionQueue } from './shared/queue.js'
+import { createBullMQConnection, createExecutionQueue, createExportQueue } from './shared/queue.js'
 import { RateLimiter } from './shared/rate-limiter.js'
 import { createEventPublisher } from './shared/event-publisher.js'
 import Anthropic from '@anthropic-ai/sdk'
@@ -52,6 +52,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   const bullmqConnection = createBullMQConnection(redisUrl)
   bullmqConnection.on('error', (err) => { fastify.log.error(err, 'BullMQ connection error') })
   const executionQueue = createExecutionQueue(bullmqConnection)
+  const exportQueue = createExportQueue(bullmqConnection)
   const rateLimiter = new RateLimiter({ redis, windowMs: 60_000, maxRequests: 10 })
   const eventPublisher = createEventPublisher(redis)
 
@@ -98,15 +99,16 @@ export async function buildApp(): Promise<FastifyInstance> {
   const contentLoader = createContentLoader({ redis, log: fastify.log })
   await fastify.register(completionPlugin, { prefix: '/api/completion', contentLoader })
   await fastify.register(progressPlugin, { prefix: '/api/progress', contentLoader })
-  await fastify.register(accountPlugin, { prefix: '/api/account' })
+  await fastify.register(accountPlugin, { prefix: '/api/account', exportQueue })
 
   // Position 4: Admin tools (Bull Board) — after domain plugins, uses own auth (basic auth)
   // Prefix scopes basicAuth hook + routes. setBasePath for UI link generation.
-  await fastify.register(adminPlugin, { prefix: '/admin/queues', executionQueue })
+  await fastify.register(adminPlugin, { prefix: '/admin/queues', executionQueue, exportQueue })
 
   // Cleanup on close
   fastify.addHook('onClose', async () => {
     await executionQueue.close()
+    await exportQueue.close()
     await bullmqConnection.quit()
   })
 

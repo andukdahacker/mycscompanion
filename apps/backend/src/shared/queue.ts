@@ -25,3 +25,22 @@ export function createExecutionQueue(connection: Redis): Queue<ExecutionJobData>
     },
   })
 }
+
+export const EXPORT_QUEUE_NAME = 'account-export'
+
+export type ExportJobData = {
+  readonly exportId: string
+  readonly userId: string
+}
+
+export function createExportQueue(connection: Redis): Queue<ExportJobData> {
+  return new Queue<ExportJobData>(EXPORT_QUEUE_NAME, {
+    connection,
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+      removeOnComplete: { age: 3600 },
+      removeOnFail: { age: 86400 },
+    },
+  })
+}

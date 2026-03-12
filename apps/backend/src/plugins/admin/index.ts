@@ -8,6 +8,7 @@ import { FastifyAdapter } from '@bull-board/fastify'
 
 interface AdminPluginOptions {
   readonly executionQueue?: Queue
+  readonly exportQueue?: Queue
 }
 
 async function adminPlugin(fastify: FastifyInstance, opts: AdminPluginOptions = {}): Promise<void> {
@@ -40,9 +41,9 @@ async function adminPlugin(fastify: FastifyInstance, opts: AdminPluginOptions = 
   const serverAdapter = new FastifyAdapter()
   serverAdapter.setBasePath('/admin/queues')
 
-  const queues = opts.executionQueue
-    ? [new BullMQAdapter(opts.executionQueue)]
-    : []
+  const queues: BullMQAdapter[] = []
+  if (opts.executionQueue) queues.push(new BullMQAdapter(opts.executionQueue))
+  if (opts.exportQueue) queues.push(new BullMQAdapter(opts.exportQueue))
 
   createBullBoard({
     queues,

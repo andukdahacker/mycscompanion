@@ -4,9 +4,10 @@ import { Redis } from 'ioredis'
 import { Worker } from 'bullmq'
 import { FlyClient, DEFAULT_FLY_MACHINE_CONFIG, getExecutionImageRef } from '@mycscompanion/execution'
 import { db, destroyDb } from '../shared/db.js'
-import { createBullMQConnection, EXECUTION_QUEUE_NAME } from '../shared/queue.js'
+import { createBullMQConnection, EXECUTION_QUEUE_NAME, EXPORT_QUEUE_NAME } from '../shared/queue.js'
 import { createEventPublisher } from '../shared/event-publisher.js'
 import { createExecutionProcessor } from './processors/execution-processor.js'
+import { createExportProcessor } from './processors/export-processor.js'
 import { createContentLoader } from '../plugins/curriculum/content-loader.js'
 
 const logger = pino({
@@ -87,6 +88,27 @@ worker.on('error', (err) => {
   logger.error(err, 'Worker connection error')
 })
 
+// Create export processor
+const exportProcessor = createExportProcessor({ db, logger })
+
+// Create export Worker
+const exportWorker = new Worker(EXPORT_QUEUE_NAME, exportProcessor, {
+  connection: bullmqConnection,
+  concurrency: 2,
+})
+
+exportWorker.on('failed', (job, err) => {
+  if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
+    Sentry.captureException(err, {
+      extra: { exportId: job.data.exportId, userId: job.data.userId },
+    })
+  }
+})
+
+exportWorker.on('error', (err) => {
+  logger.error(err, 'Export worker connection error')
+})
+
 logger.info('Worker started')
 
 // Graceful shutdown with re-entry guard
@@ -98,6 +120,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     logger.info({ signal }, 'Worker shutting down')
     void (async () => {
       await worker.close()
+      await exportWorker.close()
       await redis.quit()
       await bullmqConnection.quit()
       await destroyDb()

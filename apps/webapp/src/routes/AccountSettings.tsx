@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@mycscompanion/ui/src/components/ui/card'
 import { useAccountProfile } from '../hooks/use-account-profile'
+import { useDataExport } from '../hooks/use-data-export'
 import { signOut } from '../lib/firebase'
 import { AccountSettingsSkeleton } from '../components/settings/AccountSettingsSkeleton'
 
@@ -41,6 +42,7 @@ function AccountSettings(): React.ReactElement {
   const navigate = useNavigate()
   const { data, isLoading, isError, refetch } = useAccountProfile()
   const [signingOut, setSigningOut] = useState(false)
+  const { state: exportState, triggerExport, downloadExport } = useDataExport()
 
   const handleSignOut = useCallback(async () => {
     setSigningOut(true)
@@ -149,9 +151,29 @@ function AccountSettings(): React.ReactElement {
           </CardHeader>
           <CardContent>
             <section aria-label="Account actions" className="space-y-3">
-              <Button variant="outline" className="w-full" disabled>
-                Export My Data (Coming soon)
-              </Button>
+              {exportState.status === 'idle' && (
+                <Button variant="outline" className="w-full" onClick={() => void triggerExport()}>
+                  Export My Data
+                </Button>
+              )}
+              {exportState.status === 'processing' && (
+                <Button variant="outline" className="w-full" disabled>
+                  Preparing Export...
+                </Button>
+              )}
+              {exportState.status === 'completed' && (
+                <Button variant="outline" className="w-full" onClick={() => void downloadExport()}>
+                  Download Export
+                </Button>
+              )}
+              {exportState.status === 'failed' && (
+                <div className="space-y-2">
+                  <p className="text-sm text-destructive">{exportState.error}</p>
+                  <Button variant="outline" className="w-full" onClick={() => void triggerExport()}>
+                    Retry Export
+                  </Button>
+                </div>
+              )}
               <Button variant="outline" className="w-full" disabled>
                 Delete Account (Coming soon)
               </Button>

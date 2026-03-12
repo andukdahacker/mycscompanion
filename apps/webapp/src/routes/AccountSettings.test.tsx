@@ -25,6 +25,11 @@ vi.mock('../hooks/use-account-profile', () => ({
   useAccountProfile: () => mockUseAccountProfile(),
 }))
 
+const mockUseDataExport = vi.fn()
+vi.mock('../hooks/use-data-export', () => ({
+  useDataExport: () => mockUseDataExport(),
+}))
+
 const MOCK_PROFILE: UserProfile = {
   id: 'test-uid',
   email: 'test@example.com',
@@ -46,6 +51,12 @@ beforeEach(async () => {
   mockNavigate.mockReset()
   mockSignOut.mockReset()
   mockUseAccountProfile.mockReset()
+  mockUseDataExport.mockReset()
+  mockUseDataExport.mockReturnValue({
+    state: { status: 'idle', error: null },
+    triggerExport: vi.fn(),
+    downloadExport: vi.fn(),
+  })
   const mod = await import('./AccountSettings')
   AccountSettings = mod.default
 })
@@ -210,12 +221,6 @@ describe('AccountSettings', () => {
       })
     })
 
-    it('should render disabled "Export My Data" button', () => {
-      renderComponent()
-      const button = screen.getByText('Export My Data (Coming soon)')
-      expect(button.closest('button')?.disabled).toBe(true)
-    })
-
     it('should render disabled "Delete Account" button', () => {
       renderComponent()
       const button = screen.getByText('Delete Account (Coming soon)')
@@ -232,6 +237,85 @@ describe('AccountSettings', () => {
       renderComponent()
       const button = screen.getByText('Theme (Coming soon)')
       expect(button.closest('button')?.disabled).toBe(true)
+    })
+  })
+
+  describe('data export', () => {
+    beforeEach(() => {
+      mockUseAccountProfile.mockReturnValue({
+        data: MOCK_PROFILE,
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      })
+    })
+
+    it('should render "Export My Data" button in idle state', () => {
+      mockUseDataExport.mockReturnValue({
+        state: { status: 'idle', error: null },
+        triggerExport: vi.fn(),
+        downloadExport: vi.fn(),
+      })
+      renderComponent()
+      const button = screen.getByText('Export My Data')
+      expect(button.closest('button')?.disabled).toBeFalsy()
+    })
+
+    it('should show "Preparing Export..." when processing', () => {
+      mockUseDataExport.mockReturnValue({
+        state: { status: 'processing', error: null },
+        triggerExport: vi.fn(),
+        downloadExport: vi.fn(),
+      })
+      renderComponent()
+      const button = screen.getByText('Preparing Export...')
+      expect(button.closest('button')?.disabled).toBe(true)
+    })
+
+    it('should show "Download Export" button when completed', () => {
+      mockUseDataExport.mockReturnValue({
+        state: { status: 'completed', error: null },
+        triggerExport: vi.fn(),
+        downloadExport: vi.fn(),
+      })
+      renderComponent()
+      const button = screen.getByText('Download Export')
+      expect(button.closest('button')?.disabled).toBeFalsy()
+    })
+
+    it('should show error message and retry button when failed', () => {
+      mockUseDataExport.mockReturnValue({
+        state: { status: 'failed', error: 'Export failed. Please try again.' },
+        triggerExport: vi.fn(),
+        downloadExport: vi.fn(),
+      })
+      renderComponent()
+      expect(screen.getByText('Export failed. Please try again.')).toBeTruthy()
+      expect(screen.getByText('Retry Export')).toBeTruthy()
+    })
+
+    it('should call triggerExport when export button clicked', async () => {
+      const mockTrigger = vi.fn()
+      mockUseDataExport.mockReturnValue({
+        state: { status: 'idle', error: null },
+        triggerExport: mockTrigger,
+        downloadExport: vi.fn(),
+      })
+      renderComponent()
+      await userEvent.click(screen.getByText('Export My Data'))
+      expect(mockTrigger).toHaveBeenCalled()
+    })
+
+    it('should call downloadExport when download button clicked', async () => {
+      const mockDownload = vi.fn()
+      mockUseDataExport.mockReturnValue({
+        state: { status: 'completed', error: null },
+        triggerExport: vi.fn(),
+        downloadExport: mockDownload,
+      })
+      renderComponent()
+      await userEvent.click(screen.getByText('Download Export'))
+      expect(mockDownload).toHaveBeenCalled()
     })
   })
 })

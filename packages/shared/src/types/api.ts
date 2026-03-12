@@ -181,3 +181,42 @@ export interface TutorStreamError {
 
 export type TutorStreamEvent = TutorStreamTextDelta | TutorStreamMessageComplete | TutorStreamError
 
+// --- Data Export ---
+
+export type DataExportStatus = 'processing' | 'completed' | 'failed' | 'none'
+
+export interface DataExportResponse {
+  readonly exportId: string
+  readonly status: DataExportStatus
+  readonly message?: string
+}
+
+export interface DataExportStatusResponse {
+  readonly exportId: string | null
+  readonly status: DataExportStatus
+  readonly createdAt: string | null
+  readonly completedAt: string | null
+}
+
+export interface DataExportMetadata {
+  readonly exportDate: string
+  readonly userId: string
+  readonly categoriesIncluded: readonly string[]
+}
+
+export interface DataExportData {
+  readonly profile: Record<string, unknown>
+  readonly sessions: readonly Record<string, unknown>[]
+  readonly codeSnapshots: readonly Record<string, unknown>[]
+  readonly submissions: readonly Record<string, unknown>[]
+  readonly benchmarkResults: readonly Record<string, unknown>[]
+  readonly tutorMessages: readonly Record<string, unknown>[]
+  readonly sessionSummaries: readonly Record<string, unknown>[]
+  readonly milestoneProgress: readonly Record<string, unknown>[]
+}
+
+export interface DataExportPayload {
+  readonly metadata: DataExportMetadata
+  readonly data: DataExportData
+}
+
