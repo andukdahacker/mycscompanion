@@ -1,0 +1,40 @@
+---
+import '../styles/globals.css'
+
+interface Props {
+  title: string
+  description: string
+  canonicalUrl?: string
+}
+
+const { title, description, canonicalUrl } = Astro.props
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    {canonicalUrl && <link rel="canonical" href={canonicalUrl} />}
+  </head>
+  <body class="bg-background text-foreground font-sans">
+    <a
+      href="#main-content"
+      class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:bg-primary focus:text-primary-foreground focus:px-4 focus:py-2 focus:rounded"
+    >
+      Skip to content
+    </a>
+    <header>
+      <div class="max-w-7xl mx-auto px-6 py-4">
+        <span class="text-foreground font-semibold text-h2">tycs</span>
+      </div>
+    </header>
+    <main id="main-content">
+      <slot />
+    </main>
+    <footer class="border-t border-border">
+      <slot name="footer" />
+    </footer>
+  </body>
+</html>

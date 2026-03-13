@@ -61,7 +61,7 @@ function Completion(): React.ReactElement {
           <ul className="space-y-2">
             {data.criteriaResults.map((criterion: CriterionResult) => (
               <li key={criterion.name} className="flex items-center gap-2 text-sm">
-                <span className="text-primary" aria-hidden="true">&#10003;</span>
+                <span className="text-success" aria-hidden="true">&#10003;</span>
                 <span className="text-foreground">{criterion.name}</span>
                 <span className="text-muted-foreground">— met</span>
               </li>

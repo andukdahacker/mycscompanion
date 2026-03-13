@@ -1,17 +1,122 @@
 ---
-import '../styles/globals.css'
+import Base from '../layouts/Base.astro'
 ---
 
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>tycs — Learn CS by Building</title>
-    <meta name="description" content="Master computer science fundamentals by building real systems in Go." />
-  </head>
-  <body class="bg-background text-foreground font-sans">
-    <main class="flex min-h-screen items-center justify-center">
-      <h1 class="text-4xl font-bold text-primary">tycs</h1>
-    </main>
-  </body>
-</html>
+<Base
+  title="tycs — Learn CS by Building"
+  description="Master computer science fundamentals by building real systems in Go. Write a key-value store, measure it against a reference implementation, iterate until yours is faster."
+>
+  <section aria-labelledby="hero-heading" class="py-16 px-6 md:px-8">
+    <div class="max-w-7xl mx-auto text-center">
+      <h1
+        id="hero-heading"
+        class="text-display font-bold text-foreground leading-tight max-w-3xl mx-auto"
+      >
+        Build real systems. Measure your code against a reference. Ship when it passes.
+      </h1>
+      <p class="mt-6 text-body text-muted-foreground max-w-[720px] mx-auto">
+        tycs teaches computer science through implementation. You write Go programs that solve real problems — a key-value store, a scheduler, a network protocol — and benchmark them against reference implementations.
+      </p>
+      <div class="mt-10">
+        <a
+          href="https://app.mycscompanion.dev/sign-in"
+          class="inline-flex items-center justify-center bg-primary text-primary-foreground font-semibold rounded-lg min-h-[44px] min-w-[44px] px-8 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          <span class="hidden md:inline">Start Building</span>
+          <span class="md:hidden">Open on desktop to build</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="value-heading" class="py-16 px-6 md:px-8">
+    <div class="max-w-7xl mx-auto">
+      <h2
+        id="value-heading"
+        class="text-h1 font-semibold text-foreground text-center"
+      >
+        What you build, how you measure it
+      </h2>
+      <div class="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8">
+        <article class="bg-card rounded-lg p-6 border border-border">
+          <h3 class="text-h2 font-semibold text-foreground">Write real code</h3>
+          <p class="mt-3 text-body text-muted-foreground">
+            Each milestone is a complete system — not a toy exercise. You implement data structures, algorithms, and protocols in Go with a full editor and terminal.
+          </p>
+        </article>
+        <article class="bg-card rounded-lg p-6 border border-border">
+          <h3 class="text-h2 font-semibold text-foreground">Benchmark against a reference</h3>
+          <p class="mt-3 text-body text-muted-foreground">
+            Your implementation runs against structured workloads. Results are compared to a reference implementation so you can see exactly where your code stands.
+          </p>
+        </article>
+        <article class="bg-card rounded-lg p-6 border border-border">
+          <h3 class="text-h2 font-semibold text-foreground">Iterate until it passes</h3>
+          <p class="mt-3 text-body text-muted-foreground">
+            Acceptance criteria are concrete and measurable. You know exactly what your code needs to do. No subjective grading — your implementation either meets the spec or it does not.
+          </p>
+        </article>
+      </div>
+      <div class="mt-12 text-center">
+        <a
+          href="https://app.mycscompanion.dev/sign-in"
+          class="inline-flex items-center justify-center bg-primary text-primary-foreground font-semibold rounded-lg min-h-[44px] min-w-[44px] px-8 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          <span class="hidden md:inline">Start Building</span>
+          <span class="md:hidden">Open on desktop to build</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="preview-heading" class="py-16 px-6 md:px-8">
+    <div class="max-w-7xl mx-auto text-center">
+      <h2
+        id="preview-heading"
+        class="text-h1 font-semibold text-foreground"
+      >
+        Milestone 1: Key-Value Store
+      </h2>
+      <p class="mt-4 text-body text-muted-foreground max-w-[720px] mx-auto">
+        Your first milestone: implement a concurrent key-value store in Go. Handle reads, writes, and deletes under load. Benchmark your throughput against the reference.
+      </p>
+      <div class="mt-10">
+        <a
+          href="https://app.mycscompanion.dev/sign-in"
+          class="inline-flex items-center justify-center bg-primary text-primary-foreground font-semibold rounded-lg min-h-[44px] min-w-[44px] px-8 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          <span class="hidden md:inline">Start Building</span>
+          <span class="md:hidden">Open on desktop to build</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <div slot="footer" class="max-w-7xl mx-auto px-6 md:px-8 py-12">
+    <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+      <p class="text-body-sm text-muted-foreground">
+        tycs — Computer science through implementation
+      </p>
+      <a
+        href="https://app.mycscompanion.dev/sign-in"
+        class="inline-flex items-center justify-center bg-primary text-primary-foreground font-semibold rounded-lg min-h-[44px] min-w-[44px] px-8 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        <span class="hidden md:inline">Start Building</span>
+        <span class="md:hidden">Open on desktop to build</span>
+      </a>
+    </div>
+    <div class="mt-8 pt-8 border-t border-border flex flex-col md:flex-row items-center justify-between gap-4">
+      <p class="text-caption text-muted-foreground">
+        &copy; {new Date().getFullYear()} tycs
+      </p>
+      <nav aria-label="Footer navigation">
+        <a
+          href="https://app.mycscompanion.dev/privacy"
+          class="text-caption text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Privacy Policy
+        </a>
+      </nav>
+    </div>
+  </div>
+</Base>
