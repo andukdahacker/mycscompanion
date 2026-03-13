@@ -1,5 +1,63 @@
 ---
 import Base from '../layouts/Base.astro'
+import { Code } from 'astro:components'
+import fs from 'node:fs'
+import path from 'node:path'
+import yaml from 'yaml'
+
+// --- Build-time content loading from content/milestones/01-kv-store/ ---
+const contentDir = path.resolve('../../content/milestones/01-kv-store')
+
+// Read and parse brief.md
+const briefRaw = fs.readFileSync(path.join(contentDir, 'brief.md'), 'utf-8')
+
+// Extract "What You're Building" summary (first paragraph after heading)
+const buildingMatch = briefRaw.match(/## What You're Building\n\n(.+?\n\n)/s)
+const buildingSummary = buildingMatch
+  ? buildingMatch[1].trim().split('\n')[0].replace(/`([^`]+)`/g, '$1')
+  : ''
+
+// Extract "What You'll Learn" bullet points
+const learnSection = briefRaw.match(/## What You'll Learn\n\n([\s\S]*?)(?=\n##|\n---|$)/)?.[1] ?? ''
+const learningObjectives = learnSection
+  .split('\n')
+  .filter((line: string) => line.startsWith('- **'))
+  .map((line: string) => {
+    const match = line.match(/- \*\*(.+?)\*\* — (.+)/)
+    return match ? { title: match[1], description: match[2].replace(/`([^`]+)`/g, '$1') } : null
+  })
+  .filter((obj): obj is { title: string; description: string } => obj !== null)
+
+// Read starter code and extract excerpt (struct + Get/Put/Delete signatures with TODOs)
+const starterCode = fs.readFileSync(path.join(contentDir, 'starter-code/main.go'), 'utf-8')
+const starterLines = starterCode.split('\n')
+// KVStore struct (lines 15-20, 0-indexed 14-19)
+const structLines = starterLines.slice(14, 20)
+// Get method (lines 58-70, 0-indexed 57-69)
+const getLines = starterLines.slice(57, 70)
+// Put method (lines 72-84, 0-indexed 71-83)
+const putLines = starterLines.slice(71, 84)
+// Delete method (lines 86-98, 0-indexed 85-97)
+const deleteLines = starterLines.slice(85, 98)
+const goExcerpt = [
+  ...structLines,
+  '',
+  '// ...',
+  '',
+  ...getLines,
+  '',
+  ...putLines,
+  '',
+  ...deleteLines,
+].join('\n')
+
+// Read and parse acceptance criteria YAML
+const criteriaRaw = fs.readFileSync(path.join(contentDir, 'acceptance-criteria.yaml'), 'utf-8')
+const parsed = yaml.parse(criteriaRaw)
+const criteria = parsed.criteria.map((c: { name: string; description: string }) => ({
+  name: c.name,
+  description: c.description,
+}))
 ---
 
 <Base
@@ -115,25 +173,53 @@ import Base from '../layouts/Base.astro'
   </section>
 
   <section aria-labelledby="preview-heading" class="py-16 lg:py-24 px-6 md:px-8">
-    <div class="max-w-7xl mx-auto text-center">
+    <div class="max-w-3xl mx-auto">
       <h2
         id="preview-heading"
-        class="text-h1 font-semibold text-foreground"
+        class="text-h1 font-semibold text-foreground text-center"
       >
         Milestone 1: Key-Value Store
       </h2>
-      <p class="mt-4 text-body text-muted-foreground max-w-[720px] mx-auto">
-        Your first milestone: implement a concurrent key-value store in Go. Handle reads, writes, and deletes under load. Benchmark your throughput against the reference.
+      <p class="mt-4 text-body text-muted-foreground text-center">
+        {buildingSummary}
       </p>
-      <p class="mt-4 text-body text-muted-foreground max-w-[720px] mx-auto">
-        You start with 80% of the code scaffolded. Your job: implement the core operations and pass structured acceptance criteria. No guessing — you know exactly what "done" means.
+
+      <h3 class="mt-10 text-h2 font-semibold text-foreground">What You'll Learn</h3>
+      <ul class="mt-4 space-y-3 text-body text-muted-foreground">
+        {learningObjectives.map((obj) => (
+          <li>
+            <span class="text-foreground font-semibold">{obj.title}</span> — {obj.description}
+          </li>
+        ))}
+      </ul>
+
+      <h3 class="mt-10 text-h2 font-semibold text-foreground">Starter Code</h3>
+      <div class="mt-4 rounded-lg border border-border overflow-y-hidden overflow-x-auto">
+        <Code code={goExcerpt} lang="go" theme="github-dark" />
+      </div>
+      <p class="mt-3 text-body text-muted-foreground">
+        80% scaffolded. Your job: implement the TODO functions.
       </p>
-      <div class="mt-10">
+
+      <h3 class="mt-10 text-h2 font-semibold text-foreground">Acceptance Criteria</h3>
+      <ol class="mt-4 space-y-3 list-decimal list-inside">
+        {criteria.map((c: { name: string; description: string }) => (
+          <li class="text-body text-muted-foreground">
+            <span class="text-foreground font-semibold">{c.name}</span> — {c.description}
+          </li>
+        ))}
+      </ol>
+
+      <p class="mt-6 font-mono text-body text-muted-foreground">
+        Results: 1,000 inserts, avg 39.12ms, 25,412 ops/sec
+      </p>
+
+      <div class="mt-10 text-center">
         <a
           href="https://app.mycscompanion.dev/sign-in"
           class="inline-flex items-center justify-center bg-primary text-primary-foreground font-semibold rounded-lg min-h-[44px] min-w-[44px] px-8 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
-          <span class="hidden md:inline">Start Building</span>
+          <span class="hidden md:inline">Sign Up to Build</span>
           <span class="md:hidden">Open on desktop to build</span>
         </a>
       </div>

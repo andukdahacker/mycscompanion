@@ -24,9 +24,11 @@
   "devDependencies": {
     "@lhci/cli": "0.14.0",
     "@tailwindcss/vite": "^4.1.10",
+    "@types/node": "^25.5.0",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "tailwindcss": "^4.1.10",
-    "typescript": "~5.8.3"
+    "typescript": "~5.8.3",
+    "yaml": "^2.8.2"
   }
 }
