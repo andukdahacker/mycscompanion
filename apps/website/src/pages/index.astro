@@ -51,6 +51,9 @@ const goExcerpt = [
   ...deleteLines,
 ].join('\n')
 
+// CTA class string — shared across all 4 CTA links for DRY hover/focus styling
+const ctaClasses = 'inline-flex items-center justify-center bg-primary text-primary-foreground font-semibold rounded-lg min-h-[44px] min-w-[44px] px-8 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring hover:bg-primary/90 transition-colors'
+
 // Read and parse acceptance criteria YAML
 const criteriaRaw = fs.readFileSync(path.join(contentDir, 'acceptance-criteria.yaml'), 'utf-8')
 const parsed = yaml.parse(criteriaRaw)
@@ -91,7 +94,7 @@ const criteria = parsed.criteria.map((c: { name: string; description: string }) 
       <div class="mt-10">
         <a
           href="https://app.mycscompanion.dev/sign-in"
-          class="inline-flex items-center justify-center bg-primary text-primary-foreground font-semibold rounded-lg min-h-[44px] min-w-[44px] px-8 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          class={ctaClasses}
         >
           <span class="hidden md:inline">Start Building</span>
           <span class="md:hidden">Open on desktop to build</span>
@@ -163,7 +166,7 @@ const criteria = parsed.criteria.map((c: { name: string; description: string }) 
       <div class="mt-12 text-center">
         <a
           href="https://app.mycscompanion.dev/sign-in"
-          class="inline-flex items-center justify-center bg-primary text-primary-foreground font-semibold rounded-lg min-h-[44px] min-w-[44px] px-8 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          class={ctaClasses}
         >
           <span class="hidden md:inline">Start Building</span>
           <span class="md:hidden">Open on desktop to build</span>
@@ -217,7 +220,7 @@ const criteria = parsed.criteria.map((c: { name: string; description: string }) 
       <div class="mt-10 text-center">
         <a
           href="https://app.mycscompanion.dev/sign-in"
-          class="inline-flex items-center justify-center bg-primary text-primary-foreground font-semibold rounded-lg min-h-[44px] min-w-[44px] px-8 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          class={ctaClasses}
         >
           <span class="hidden md:inline">Sign Up to Build</span>
           <span class="md:hidden">Open on desktop to build</span>
@@ -233,7 +236,7 @@ const criteria = parsed.criteria.map((c: { name: string; description: string }) 
       </p>
       <a
         href="https://app.mycscompanion.dev/sign-in"
-        class="inline-flex items-center justify-center bg-primary text-primary-foreground font-semibold rounded-lg min-h-[44px] min-w-[44px] px-8 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        class={ctaClasses}
       >
         <span class="hidden md:inline">Start Building</span>
         <span class="md:hidden">Open on desktop to build</span>
