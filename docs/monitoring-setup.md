@@ -81,6 +81,44 @@ Railway aggregates logs from all services. Fastify outputs structured JSON via p
 - Filter by user: search for `"uid":"firebase-uid-123"`
 - Filter by route: search for `"url":"/api/execution"`
 
+## Queue Management (Bull Board)
+
+Bull Board (`@bull-board/api@^6.20.3`) provides a web UI for monitoring and managing BullMQ job queues.
+
+### Access
+
+- **URL:** `https://<api-host>/admin/queues`
+- **Authentication:** HTTP Basic Auth
+  - Username: `MCC_ADMIN_USER` env var (default: `admin`)
+  - Password: `MCC_ADMIN_PASSWORD` env var (required — Bull Board is disabled if not set)
+
+### Queues
+
+| Queue | Purpose | Retry Config | Worker Concurrency |
+|---|---|---|---|
+| `execution-run` | Code execution submissions (compile + test + benchmark) | 2 attempts, exponential backoff starting at 5s | 10 |
+| `account-export` | User data export requests | 3 attempts, exponential backoff starting at 5s | 2 |
+
+### Job Retention
+
+- **Completed jobs:** Removed after 1 hour (`removeOnComplete.age: 3600`)
+- **Failed jobs:** Retained for 24 hours (`removeOnFail.age: 86400`)
+
+### Common Admin Actions
+
+- **Inspect failed jobs:** Click a failed job in Bull Board to see error messages, stack traces, and attempt history
+- **Retry a failed job:** Click the retry button on any failed job in the Bull Board UI
+- **Remove stuck jobs:** Use the clean waiting/delayed actions in the Bull Board UI
+- **Monitor queue depth:** Check waiting + active counts during peak load periods
+
+### Troubleshooting
+
+| Symptom | Likely Cause | Action |
+|---|---|---|
+| Queue shows many failed jobs | Worker errors or Fly.io machine unavailability | Check worker logs in Railway, check Fly.io machine availability |
+| Jobs stuck in waiting | Worker service not running or Redis connectivity issues | Verify worker service is running in Railway, check Redis connectivity |
+| Jobs stuck in active | Possible worker crash; jobs will be moved to failed after stall timeout (default: 30s) | Check worker logs for crashes, jobs will auto-recover via stall timeout |
+
 ## Railway Service Configuration Files
 
 | Service | Config File |

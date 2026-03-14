@@ -70,6 +70,28 @@ describe('Admin Plugin', () => {
       expect(response.statusCode).toBe(200)
     })
 
+    it('should return both queues from /admin/queues/api/queues', async () => {
+      const credentials = Buffer.from(`${adminUser}:${adminPass}`).toString(
+        'base64'
+      )
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/admin/queues/api/queues',
+        headers: {
+          authorization: `Basic ${credentials}`,
+        },
+      })
+
+      expect(response.statusCode).toBe(200)
+      const body = response.json()
+      expect(body).toHaveProperty('queues')
+      expect(Array.isArray(body.queues)).toBe(true)
+      const queueNames = body.queues.map((q: { name: string }) => q.name)
+      expect(queueNames).toContain('execution-run')
+      expect(queueNames).toContain('account-export')
+    })
+
     it('should return 401 with invalid credentials', async () => {
       const credentials = Buffer.from('admin:wrong-password').toString(
         'base64'
