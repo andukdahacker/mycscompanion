@@ -119,6 +119,161 @@ Bull Board (`@bull-board/api@^6.20.3`) provides a web UI for monitoring and mana
 | Jobs stuck in waiting | Worker service not running or Redis connectivity issues | Verify worker service is running in Railway, check Redis connectivity |
 | Jobs stuck in active | Possible worker crash; jobs will be moved to failed after stall timeout (default: 30s) | Check worker logs for crashes, jobs will auto-recover via stall timeout |
 
+## Tutor Conversation Log Review
+
+Assess AI tutor prompt quality, identify areas where the Socratic approach breaks down, and find topics where learners consistently struggle.
+
+### Data Source
+
+Two PostgreSQL views provide denormalized tutor data for easy querying:
+
+| View | Purpose |
+|---|---|
+| `tutor_conversation_log` | Denormalized message-level view joining `tutor_messages` + `sessions` + `users` + `milestones` — browse individual conversations |
+| `tutor_session_summary` | Aggregated session-level view — message counts, model usage breakdown, session duration |
+
+Views are created by migration `011_add_tutor_analytics_views.ts`. They are read-only and do not affect application performance.
+
+### Access Method
+
+**Metabase dashboards** (recommended) or direct SQL. No custom admin UI — external tools only.
+
+**Metabase local setup:**
+```bash
+docker compose --profile metabase up metabase
+# Access at http://localhost:3000
+# Connects to local PostgreSQL automatically via DATABASE_URL
+```
+
+Metabase is a local/staging admin tool only — not deployed to Railway.
+
+### Recommended Dashboards
+
+#### 1. Conversation Explorer (AC #1, #2, #3)
+
+Browse individual conversations filtered by milestone, model, and date range.
+
+```sql
+-- Browse conversations for a specific milestone (last 7 days)
+SELECT * FROM tutor_conversation_log
+WHERE milestone_slug = 'kv-store'
+  AND created_at >= NOW() - INTERVAL '7 days'
+ORDER BY created_at DESC;
+
+-- Filter by model tier (Sonnet only — escalated responses)
+SELECT * FROM tutor_conversation_log
+WHERE model LIKE 'claude-sonnet%'
+ORDER BY created_at DESC;
+```
+
+#### 2. Session Summary (AC #2, #3)
+
+Aggregate stats per session: message counts, model usage, duration.
+
+```sql
+SELECT * FROM tutor_session_summary
+ORDER BY last_message_at DESC;
+```
+
+#### 3. Model Usage Analysis (AC #3)
+
+Haiku vs Sonnet breakdown by milestone and user experience level.
+
+```sql
+SELECT
+  milestone_title,
+  experience_level,
+  COUNT(*) AS sessions,
+  AVG(haiku_messages) AS avg_haiku,
+  AVG(sonnet_messages) AS avg_sonnet
+FROM tutor_session_summary
+GROUP BY milestone_title, experience_level
+ORDER BY milestone_title, experience_level;
+```
+
+#### 4. Socratic Approach Breakdown Detection (AC #4)
+
+Sessions where `sonnet_messages > haiku_messages` indicate the Socratic approach failed and the tutor escalated to deeper explanations. High Sonnet ratio per milestone reveals topics where guided questioning doesn't work.
+
+```sql
+SELECT * FROM tutor_session_summary
+WHERE sonnet_messages > haiku_messages
+ORDER BY total_messages DESC;
+```
+
+#### 5. Recurring Struggle Topics (AC #4)
+
+Sessions with high message counts (>10) suggest learners are struggling. Cross-reference with experience level to determine if struggles are universal or experience-dependent.
+
+```sql
+SELECT
+  milestone_title,
+  user_role,
+  experience_level,
+  AVG(total_messages) AS avg_messages,
+  AVG(sonnet_messages::float / NULLIF(total_messages, 0)) AS sonnet_ratio
+FROM tutor_session_summary
+GROUP BY milestone_title, user_role, experience_level
+ORDER BY avg_messages DESC;
+```
+
+#### 6. Common Questions Pattern (AC #4)
+
+Find recurring question patterns by milestone. The query below matches **exact duplicate messages only** — for semantic pattern detection, use Metabase's text search (`ILIKE '%keyword%'`) or browse conversations manually by milestone to identify themes.
+
+```sql
+-- Exact duplicates (e.g., copy-pasted error messages)
+SELECT milestone_slug, content, COUNT(*) AS frequency
+FROM tutor_conversation_log
+WHERE message_role = 'user'
+GROUP BY milestone_slug, content
+HAVING COUNT(*) > 2
+ORDER BY frequency DESC;
+
+-- Keyword search for topic patterns (more useful in practice)
+SELECT milestone_slug, content, created_at
+FROM tutor_conversation_log
+WHERE message_role = 'user'
+  AND content ILIKE '%how do I%'
+ORDER BY created_at DESC;
+```
+
+### Date Range Filtering
+
+```sql
+SELECT * FROM tutor_session_summary
+WHERE first_message_at >= '2026-03-01'
+  AND first_message_at < '2026-04-01';
+```
+
+### Cursor-Based Pagination (ARCH-13)
+
+Metabase handles pagination internally. For direct SQL browsing (most recent first):
+
+```sql
+-- Simple cursor (most recent first)
+SELECT * FROM tutor_conversation_log
+WHERE created_at < $last_seen_timestamp
+ORDER BY created_at DESC, message_id DESC
+LIMIT 50;
+
+-- Composite cursor for precision
+SELECT * FROM tutor_conversation_log
+WHERE (created_at, message_id) < ($cursor_created_at, $cursor_id)
+ORDER BY created_at DESC, message_id DESC
+LIMIT 50;
+```
+
+**Note:** The existing tutor history API route (`GET /api/tutor/:sessionId/messages`) uses ASC ordering for chronological chat display. These admin queries use DESC for log review (most recent first). Both are valid for their respective use cases.
+
+### Privacy & PII Guardrails
+
+- Conversation content contains user code and AI responses — this is **PII**
+- Restrict Metabase access to admin users only (Metabase has its own user management)
+- Never expose tutor conversation content in application logs at `info` level or above
+- Do NOT create API endpoints that expose conversation content — Metabase/direct SQL only
+- **Data retention:** `tutor_messages` cascade-delete when user account is deleted (GDPR compliance via Story 8.3)
+
 ## Railway Service Configuration Files
 
 | Service | Config File |
