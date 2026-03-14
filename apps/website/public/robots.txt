@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://mycscompanion.dev/sitemap-index.xml
