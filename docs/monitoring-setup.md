@@ -274,6 +274,249 @@ LIMIT 50;
 - Do NOT create API endpoints that expose conversation content — Metabase/direct SQL only
 - **Data retention:** `tutor_messages` cascade-delete when user account is deleted (GDPR compliance via Story 8.3)
 
+## Analytics & Reporting
+
+Understand user behavior, identify improvement opportunities, and monitor platform health metrics.
+
+### Data Source
+
+Six PostgreSQL views provide denormalized analytics data for easy querying:
+
+| View | Purpose |
+|---|---|
+| `platform_signup_metrics` | Daily signup aggregation — signup count, onboarding completion rate, skill floor pass rate |
+| `milestone_completion_metrics` | Completed users per milestone with track context |
+| `milestone_dropout_analysis` | Per-user per-milestone dropout detection — users who attempted but didn't complete |
+| `user_retention_daily` | Daily active users for cohort retention analysis (DAU/WAU/MAU) |
+| `milestone_time_to_completion` | Time from first session to milestone completion per user |
+| `user_resource_consumption` | Per-user resource usage for cost estimation (sessions, submissions, tutor messages, benchmarks) |
+
+Views are created by migration `012_add_platform_analytics_views.ts`. They are read-only and do not affect application performance.
+
+### Access Method
+
+**Metabase dashboards** (recommended) or direct SQL. No custom admin UI — external tools only (ARCH-24).
+
+**Metabase local setup:**
+```bash
+docker compose --profile metabase up metabase
+# Access at http://localhost:3000
+# Connects to local PostgreSQL automatically via DATABASE_URL
+```
+
+Metabase is a local/staging admin tool only — not deployed to Railway.
+
+### Recommended Dashboards
+
+#### 1. Signup Funnel
+
+Daily signups, onboarding completion rate, skill floor pass rate.
+
+```sql
+-- Last 30 days signup funnel
+SELECT * FROM platform_signup_metrics
+WHERE signup_date >= NOW() - INTERVAL '30 days'
+ORDER BY signup_date DESC;
+```
+
+#### 2. Milestone Completion Rates
+
+Completed users per milestone ordered by position to see the progression funnel.
+
+```sql
+SELECT
+  milestone_title,
+  milestone_position,
+  completed_users,
+  ROUND(completed_users * 100.0 / NULLIF((SELECT COUNT(*) FROM users), 0), 1) AS completion_rate_pct
+FROM milestone_completion_metrics
+ORDER BY milestone_position;
+```
+
+#### 3. Dropout Analysis
+
+Users who attempted but didn't complete each milestone, segmented by experience level.
+
+```sql
+SELECT
+  milestone_title,
+  experience_level,
+  COUNT(*) AS dropout_count,
+  AVG(submission_count) AS avg_submissions
+FROM milestone_dropout_analysis
+WHERE completed = false
+GROUP BY milestone_title, experience_level
+ORDER BY dropout_count DESC;
+```
+
+#### 4. User Retention
+
+Cohort retention chart — group by signup date, then pivot on activity date.
+
+```sql
+-- Day-7 retention by cohort
+SELECT
+  signup_date,
+  COUNT(DISTINCT user_id) FILTER (WHERE activity_date = signup_date) AS day_0,
+  COUNT(DISTINCT user_id) FILTER (WHERE activity_date = signup_date + INTERVAL '7 days') AS day_7
+FROM user_retention_daily
+GROUP BY signup_date
+ORDER BY signup_date DESC;
+```
+
+#### 5. Time to Completion
+
+Average hours to complete each milestone, segmented by experience level.
+
+```sql
+SELECT
+  milestone_slug,
+  milestone_position,
+  ROUND(AVG(time_to_completion_seconds) / 3600, 1) AS avg_hours,
+  ROUND(AVG(total_submissions), 1) AS avg_submissions
+FROM milestone_time_to_completion
+GROUP BY milestone_slug, milestone_position
+ORDER BY milestone_position;
+
+-- Segmented by experience level (user cohort filtering)
+SELECT
+  milestone_slug,
+  experience_level,
+  ROUND(AVG(time_to_completion_seconds) / 3600, 1) AS avg_hours,
+  COUNT(*) AS user_count
+FROM milestone_time_to_completion
+GROUP BY milestone_slug, experience_level
+ORDER BY milestone_slug, experience_level;
+```
+
+#### 6. Active Users (DAU/WAU/MAU)
+
+Daily, weekly, and monthly active user counts.
+
+```sql
+-- DAU (last 30 days)
+SELECT
+  DATE_TRUNC('day', activity_date) AS day,
+  COUNT(DISTINCT user_id) AS dau
+FROM user_retention_daily
+WHERE activity_date >= NOW() - INTERVAL '30 days'
+GROUP BY day
+ORDER BY day DESC;
+
+-- WAU (last 12 weeks)
+SELECT
+  DATE_TRUNC('week', activity_date) AS week,
+  COUNT(DISTINCT user_id) AS wau
+FROM user_retention_daily
+WHERE activity_date >= NOW() - INTERVAL '12 weeks'
+GROUP BY week
+ORDER BY week DESC;
+
+-- MAU (last 12 months)
+SELECT
+  DATE_TRUNC('month', activity_date) AS month,
+  COUNT(DISTINCT user_id) AS mau
+FROM user_retention_daily
+WHERE activity_date >= NOW() - INTERVAL '12 months'
+GROUP BY month
+ORDER BY month DESC;
+```
+
+#### 7. Cost Analysis
+
+Per-user resource consumption for cost estimation. Identifies heavy users.
+
+```sql
+-- Top resource consumers
+SELECT
+  email,
+  total_sessions,
+  total_submissions,
+  total_tutor_messages,
+  sonnet_messages,
+  milestones_completed
+FROM user_resource_consumption
+ORDER BY total_submissions DESC
+LIMIT 20;
+```
+
+### Cost Tracking Formula (NFR-SC2)
+
+```
+Monthly cost per user = (Railway monthly bill + Fly.io monthly bill) / active_user_count
+
+Where:
+- Railway monthly bill: Sum of api, worker, postgres, redis service costs from Railway dashboard → Billing
+- Fly.io monthly bill: Execution machine costs from Fly.io dashboard → Billing
+- active_user_count: SELECT COUNT(DISTINCT user_id) FROM user_retention_daily WHERE activity_date >= NOW() - INTERVAL '30 days'
+
+Target: ≤ $0.65/month per user at 100 concurrent users
+```
+
+Resource consumption breakdown for identifying cost drivers:
+
+```sql
+SELECT
+  'submissions' AS resource, COUNT(*) AS count FROM submissions WHERE created_at >= NOW() - INTERVAL '30 days'
+UNION ALL
+SELECT
+  'tutor_messages', COUNT(*) FROM tutor_messages WHERE created_at >= NOW() - INTERVAL '30 days'
+UNION ALL
+SELECT
+  'sessions', COUNT(*) FROM sessions WHERE started_at >= NOW() - INTERVAL '30 days'
+UNION ALL
+SELECT
+  'benchmark_runs', COUNT(*) FROM benchmark_results WHERE created_at >= NOW() - INTERVAL '30 days';
+```
+
+Railway and Fly.io costs are external — pull from their respective billing dashboards monthly. No API integration needed at MVP.
+
+### Date Range Filtering
+
+All views support date range filtering. Always filter by date range in Metabase to avoid full table scans:
+
+```sql
+-- Signup metrics for a specific month
+SELECT * FROM platform_signup_metrics
+WHERE signup_date >= '2026-03-01' AND signup_date < '2026-04-01';
+
+-- Retention for a specific period
+SELECT * FROM user_retention_daily
+WHERE activity_date >= '2026-03-01' AND activity_date < '2026-04-01';
+```
+
+### Cursor-Based Pagination (ARCH-13)
+
+Metabase handles pagination internally. For direct SQL browsing with large result sets:
+
+```sql
+-- Dropout analysis (recent activity first)
+SELECT * FROM milestone_dropout_analysis
+WHERE last_activity_at < $cursor_timestamp
+ORDER BY last_activity_at DESC LIMIT 50;
+
+-- Retention daily (most recent first)
+SELECT * FROM user_retention_daily
+WHERE (activity_date, user_id) < ($cursor_date, $cursor_user_id)
+ORDER BY activity_date DESC, user_id DESC LIMIT 50;
+```
+
+### Privacy & PII Guardrails
+
+- `user_resource_consumption` view exposes `email` — this is **PII**
+- Restrict Metabase access to admin users only (Metabase has its own user management)
+- Do NOT create API endpoints that expose analytics data — Metabase/direct SQL only
+- When sharing dashboard screenshots, redact email addresses
+- **Data retention:** All analytics views derive from base tables that cascade-delete when user account is deleted (GDPR compliance via Story 8.3)
+
+### Performance Considerations (NFR-SC1)
+
+- All 6 views are non-materialized — they execute JOINs on every query. This is fine for admin analytics at MVP scale (100 users).
+- Existing indexes support efficient querying: `idx_submissions_user_id_milestone_id`, `idx_sessions_user_id_milestone_id`, `idx_user_milestones_user_id_milestone_id`.
+- Always filter by date range in Metabase to avoid full table scans.
+- If analytics queries cause performance issues at scale (unlikely at 100 users), convert to materialized views with periodic refresh — NOT needed at MVP.
+- Analytics views are read-only — they cannot affect write performance or user-facing routes.
+
 ## Railway Service Configuration Files
 
 | Service | Config File |
