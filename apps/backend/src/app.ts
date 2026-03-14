@@ -14,6 +14,7 @@ import { createContentLoader } from './plugins/curriculum/content-loader.js'
 import { progressPlugin } from './plugins/progress/index.js'
 import { accountPlugin } from './plugins/account/index.js'
 import { adminPlugin } from './plugins/admin/index.js'
+import { generateId } from './shared/id.js'
 import { redis } from './shared/redis.js'
 import { createBullMQConnection, createExecutionQueue, createExportQueue } from './shared/queue.js'
 import { RateLimiter } from './shared/rate-limiter.js'
@@ -22,6 +23,7 @@ import Anthropic from '@anthropic-ai/sdk'
 
 export async function buildApp(): Promise<FastifyInstance> {
   const fastify = Fastify({
+    genReqId: () => generateId(),
     logger: {
       level: process.env['LOG_LEVEL'] ?? 'info',
       transport:
@@ -57,6 +59,18 @@ export async function buildApp(): Promise<FastifyInstance> {
   const exportQueue = createExportQueue(bullmqConnection)
   const rateLimiter = new RateLimiter({ redis, windowMs: 60_000, maxRequests: 10 })
   const eventPublisher = createEventPublisher(redis)
+
+  // Log enrichment: add user ID to request logger for authenticated requests
+  fastify.addHook('onRequest', async (request) => {
+    if (request.uid !== '') {
+      request.log = request.log.child({ uid: request.uid })
+    }
+  })
+
+  // Return request ID in response header for client-side traceability
+  fastify.addHook('onSend', async (request, reply) => {
+    void reply.header('x-request-id', request.id)
+  })
 
   // Position 3: Domain plugins
   await fastify.register(executionPlugin, {

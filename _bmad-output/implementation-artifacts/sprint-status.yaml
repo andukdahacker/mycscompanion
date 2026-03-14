@@ -144,8 +144,8 @@ development_status:
   epic-9-retrospective: optional
 
   # Epic 10: Operations & Monitoring
-  epic-10: backlog
-  10-1-infrastructure-health-monitoring: backlog
+  epic-10: in-progress
+  10-1-infrastructure-health-monitoring: done
   10-2-execution-queue-management-via-bull-board: backlog
   10-3-ai-tutor-conversation-log-review: backlog
   10-4-analytics-and-reporting: backlog

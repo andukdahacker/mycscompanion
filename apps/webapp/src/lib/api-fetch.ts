@@ -67,8 +67,13 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
   }
 
   if (!response.ok) {
+    const requestId = response.headers.get('x-request-id')
     const body: unknown = await response.json().catch(() => ({}))
     const { code, message } = parseErrorBody(body)
+    if (requestId) {
+      // eslint-disable-next-line no-console -- Sentry captures console.error automatically
+      console.error(`[API Error] ${options.method ?? 'GET'} ${path} → ${response.status} (request-id: ${requestId})`)
+    }
     throw new ApiError(response.status, code, message)
   }
 
