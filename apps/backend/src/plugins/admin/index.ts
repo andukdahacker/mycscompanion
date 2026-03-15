@@ -5,10 +5,15 @@ import basicAuth from '@fastify/basic-auth'
 import { createBullBoard } from '@bull-board/api'
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter'
 import { FastifyAdapter } from '@bull-board/fastify'
+import { reloadRoutes } from './routes/reload-config.js'
 
 interface AdminPluginOptions {
   readonly executionQueue?: Queue
   readonly exportQueue?: Queue
+  readonly resetPromptCaches?: () => void
+  readonly reloadModelRoutingConfig?: () => Promise<void>
+  readonly invalidateContentCache?: (milestoneSlug?: string) => Promise<void>
+  readonly validatePromptFiles?: () => Promise<readonly string[]>
 }
 
 async function adminPlugin(fastify: FastifyInstance, opts: AdminPluginOptions = {}): Promise<void> {
@@ -17,7 +22,7 @@ async function adminPlugin(fastify: FastifyInstance, opts: AdminPluginOptions = 
   const adminPass = process.env['MCC_ADMIN_PASSWORD']
 
   if (!adminPass) {
-    fastify.log.warn('MCC_ADMIN_PASSWORD not set — Bull Board disabled')
+    fastify.log.warn('MCC_ADMIN_PASSWORD not set — admin routes disabled')
     return
   }
 
@@ -37,6 +42,9 @@ async function adminPlugin(fastify: FastifyInstance, opts: AdminPluginOptions = 
     authenticate: { realm: 'mycscompanion-admin' },
   })
 
+  // Protect all routes in this plugin scope with basic auth
+  fastify.addHook('onRequest', fastify.basicAuth)
+
   // Bull Board setup
   const serverAdapter = new FastifyAdapter()
   serverAdapter.setBasePath('/admin/queues')
@@ -50,11 +58,18 @@ async function adminPlugin(fastify: FastifyInstance, opts: AdminPluginOptions = 
     serverAdapter,
   })
 
-  // Use setBasePath ONLY — do NOT also pass prefix, or routes will double-prefix
-  await fastify.register(serverAdapter.registerPlugin())
+  await fastify.register(serverAdapter.registerPlugin(), { prefix: '/queues' })
 
-  // Protect all routes in this plugin scope with basic auth
-  fastify.addHook('onRequest', fastify.basicAuth)
+  // Reload routes for external configuration management
+  if (opts.resetPromptCaches && opts.reloadModelRoutingConfig && opts.invalidateContentCache && opts.validatePromptFiles) {
+    await fastify.register(reloadRoutes, {
+      resetPromptCaches: opts.resetPromptCaches,
+      reloadModelRoutingConfig: opts.reloadModelRoutingConfig,
+      invalidateContentCache: opts.invalidateContentCache,
+      validatePromptFiles: opts.validatePromptFiles,
+    })
+  }
 }
 
 export { adminPlugin }
+export type { AdminPluginOptions }

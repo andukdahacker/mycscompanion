@@ -16,11 +16,17 @@ export interface RedisCache {
   set(key: string, value: string, expiryMode: string, duration: number): Promise<string | null>
 }
 
+export interface ContextAssemblerLogger {
+  warn(obj: Record<string, unknown>, msg: string): void
+  error(obj: Record<string, unknown>, msg: string): void
+}
+
 export type ContextAssemblerOptions = {
   readonly db: Kysely<DB>
   readonly redis: RedisCache
   readonly contentRoot?: string
   readonly promptsRoot?: string
+  readonly log?: ContextAssemblerLogger
 }
 
 export type AssembleParams = {
@@ -32,13 +38,22 @@ export type AssembleParams = {
 
 export interface ContextAssembler {
   assembleSystemPrompt(params: AssembleParams): Promise<string>
+  resetPromptCache(): void
 }
 
 const DEFAULT_CONTENT_ROOT = resolve(process.cwd(), '..', '..', 'content', 'milestones')
 const DEFAULT_PROMPTS_ROOT = resolve(process.cwd(), '..', '..', 'content', 'prompts')
 
+const EXPECTED_TEMPLATE_VARS = [
+  '{{milestone_brief}}',
+  '{{current_code}}',
+  '{{criteria_status}}',
+  '{{user_background}}',
+  '{{available_explainers}}',
+]
+
 export function createContextAssembler(opts: ContextAssemblerOptions): ContextAssembler {
-  const { db, redis } = opts
+  const { db, redis, log } = opts
   const contentRoot = opts.contentRoot ?? DEFAULT_CONTENT_ROOT
   const promptsRoot = opts.promptsRoot ?? DEFAULT_PROMPTS_ROOT
 
@@ -46,11 +61,33 @@ export function createContextAssembler(opts: ContextAssemblerOptions): ContextAs
 
   async function loadBasePrompt(): Promise<string> {
     if (cachedBasePrompt) return cachedBasePrompt
-    cachedBasePrompt = await readFile(join(promptsRoot, 'tutor-base.md'), 'utf-8')
-    return cachedBasePrompt
+
+    const filePath = join(promptsRoot, 'tutor-base.md')
+    try {
+      const content = await readFile(filePath, 'utf-8')
+      if (content.length === 0) {
+        log?.warn({ filePath }, 'Tutor base prompt file is empty')
+      }
+      const missingVars = EXPECTED_TEMPLATE_VARS.filter((v) => !content.includes(v))
+      if (missingVars.length > 0) {
+        log?.warn({ filePath, missingVars }, 'Tutor base prompt is missing expected template variables')
+      }
+      cachedBasePrompt = content
+      return content
+    } catch (err) {
+      if (cachedBasePrompt) {
+        log?.error({ filePath, error: String(err) }, 'Failed to reload tutor base prompt — using cached version')
+        return cachedBasePrompt
+      }
+      throw new Error(`Failed to load tutor base prompt from ${filePath}: ${String(err)}`)
+    }
   }
 
   return {
+    resetPromptCache(): void {
+      cachedBasePrompt = null
+    },
+
     async assembleSystemPrompt(params: AssembleParams): Promise<string> {
       const [basePrompt, milestoneBrief, currentCode, criteriaStatus, userBackground, sessionSummary, explainerMetadata] =
         await Promise.all([

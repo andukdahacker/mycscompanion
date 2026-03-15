@@ -41,21 +41,41 @@ export type TutorRequestParams = {
   readonly context: TutorContext
 }
 
-export type TutorModel = 'claude-haiku-4-5-20251001' | 'claude-sonnet-4-6-20250514'
+export type TutorModel = string
 
-const HAIKU_MODEL: TutorModel = 'claude-haiku-4-5-20251001'
-const SONNET_MODEL: TutorModel = 'claude-sonnet-4-6-20250514'
-
-const EXPLAIN_PATTERNS = /\b(explain|what is|how does|why does|what happens|how would)\b/i
+import { loadModelRoutingConfig } from './config-loader.js'
+import type { ModelRoutingRule } from '@mycscompanion/shared'
 
 const TTFT_TIMEOUT_MS = Number(process.env['MCC_TUTOR_TTFT_TIMEOUT_MS']) || 30_000
 const STREAM_TIMEOUT_MS = Number(process.env['MCC_TUTOR_STREAM_TIMEOUT_MS']) || 120_000
 
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function matchesCondition(rule: ModelRoutingRule, context: TutorContext): boolean {
+  switch (rule.condition) {
+    case 'stuck_intervention':
+      return context.isStuckIntervention === true
+    case 'compile_errors':
+      return context.hasCompileErrors === true
+    case 'explain_pattern':
+      if (!context.userMessage || !rule.patterns?.length) return false
+      const pattern = new RegExp(`\\b(${rule.patterns.map(escapeRegex).join('|')})\\b`, 'i')
+      return pattern.test(context.userMessage)
+    default:
+      return false
+  }
+}
+
 export function selectModel(context: TutorContext): TutorModel {
-  if (context.isStuckIntervention) return SONNET_MODEL
-  if (context.hasCompileErrors) return SONNET_MODEL
-  if (EXPLAIN_PATTERNS.test(context.userMessage)) return SONNET_MODEL
-  return HAIKU_MODEL
+  const config = loadModelRoutingConfig()
+  for (const rule of config.routing_rules) {
+    if (matchesCondition(rule, context)) {
+      return config.models[rule.model]
+    }
+  }
+  return config.models[config.default_model]
 }
 
 export interface AnthropicService {

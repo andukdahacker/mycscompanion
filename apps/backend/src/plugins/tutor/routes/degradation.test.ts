@@ -70,10 +70,12 @@ const mockAnthropicService: AnthropicService = {
 
 const mockContextAssembler: ContextAssembler = {
   assembleSystemPrompt: vi.fn(async () => 'You are a tutor.'),
+  resetPromptCache: vi.fn(),
 }
 
 const mockStuckContextAssembler: StuckContextAssembler = {
   assembleStuckInterventionPrompt: vi.fn(async () => 'You are helping a stuck learner.'),
+  resetPromptCache: vi.fn(),
 }
 
 const mockRateLimiter: RateLimitChecker = {

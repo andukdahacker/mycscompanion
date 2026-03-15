@@ -1,6 +1,16 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest'
 import { selectModel, createAnthropicService, classifyError } from './anthropic.js'
 import type { TutorContext, TutorRequestParams, AnthropicClient, AnthropicMessageStream } from './anthropic.js'
+vi.mock('./config-loader.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./config-loader.js')>()
+  return {
+    ...actual,
+    loadModelRoutingConfig: vi.fn().mockReturnValue(actual.DEFAULT_CONFIG),
+  }
+})
+
+import { loadModelRoutingConfig, DEFAULT_CONFIG } from './config-loader.js'
+const mockLoadConfig = vi.mocked(loadModelRoutingConfig)
 
 function createMockClient(overrides: {
   create?: AnthropicClient['messages']['create']
@@ -54,6 +64,10 @@ function createMockStream(chunks: string[]): AnthropicMessageStream {
   return mock
 }
 
+beforeEach(() => {
+  mockLoadConfig.mockReturnValue(DEFAULT_CONFIG)
+})
+
 afterEach(() => {
   vi.restoreAllMocks()
 })
@@ -98,6 +112,68 @@ describe('selectModel', () => {
   it('should return Haiku for default when isStuckIntervention is undefined', () => {
     const context: TutorContext = { userMessage: 'some message', hasCompileErrors: false }
     expect(selectModel(context)).toBe('claude-haiku-4-5-20251001')
+  })
+
+  it('should follow config rules in order (first match wins)', () => {
+    mockLoadConfig.mockReturnValue({
+      models: { haiku: 'claude-haiku-4-5-20251001', sonnet: 'claude-sonnet-4-6-20250514' },
+      default_model: 'haiku',
+      routing_rules: [
+        { condition: 'compile_errors', model: 'sonnet', description: 'test' },
+        { condition: 'stuck_intervention', model: 'haiku', description: 'test' },
+      ],
+    })
+
+    // compile_errors rule matches first, even though stuck_intervention would also match
+    const context: TutorContext = { userMessage: 'help', hasCompileErrors: true, isStuckIntervention: true }
+    expect(selectModel(context)).toBe('claude-sonnet-4-6-20250514')
+  })
+
+  it('should fall back to default model when no rules match', () => {
+    mockLoadConfig.mockReturnValue({
+      models: { haiku: 'claude-haiku-4-5-20251001', sonnet: 'claude-sonnet-4-6-20250514' },
+      default_model: 'sonnet',
+      routing_rules: [],
+    })
+
+    const context: TutorContext = { userMessage: 'hello', hasCompileErrors: false }
+    expect(selectModel(context)).toBe('claude-sonnet-4-6-20250514')
+  })
+
+  it('should use custom model IDs from config', () => {
+    mockLoadConfig.mockReturnValue({
+      models: { haiku: 'custom-haiku-model', sonnet: 'custom-sonnet-model' },
+      default_model: 'haiku',
+      routing_rules: [
+        { condition: 'stuck_intervention', model: 'sonnet', description: 'test' },
+      ],
+    })
+
+    const context: TutorContext = { userMessage: 'help', hasCompileErrors: false, isStuckIntervention: true }
+    expect(selectModel(context)).toBe('custom-sonnet-model')
+  })
+
+  it('should use custom patterns from config for explain_pattern rule', () => {
+    mockLoadConfig.mockReturnValue({
+      models: { haiku: 'claude-haiku-4-5-20251001', sonnet: 'claude-sonnet-4-6-20250514' },
+      default_model: 'haiku',
+      routing_rules: [
+        {
+          condition: 'explain_pattern',
+          model: 'sonnet',
+          description: 'test',
+          patterns: ['help me understand', 'teach me'],
+        },
+      ],
+    })
+
+    // Should match custom pattern
+    const context1: TutorContext = { userMessage: 'help me understand pointers', hasCompileErrors: false }
+    expect(selectModel(context1)).toBe('claude-sonnet-4-6-20250514')
+
+    // Should NOT match the default "explain" pattern since it's not in custom patterns
+    const context2: TutorContext = { userMessage: 'explain this', hasCompileErrors: false }
+    expect(selectModel(context2)).toBe('claude-haiku-4-5-20251001')
   })
 })
 

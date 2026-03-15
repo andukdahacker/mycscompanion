@@ -301,6 +301,38 @@ describe('ContextAssembler', () => {
       expect(prompt).not.toContain('{{available_explainers}}')
     })
 
+    it('should re-read prompt from filesystem after resetPromptCache', async () => {
+      const mockRedis = createMockRedis()
+      const assembler = createContextAssembler({
+        db,
+        redis: mockRedis,
+        contentRoot: CONTENT_FIXTURES_ROOT,
+        promptsRoot: PROMPTS_FIXTURES_ROOT,
+      })
+
+      const prompt1 = await assembler.assembleSystemPrompt({
+        userId: TEST_UID,
+        sessionId,
+        milestoneId,
+        milestoneSlug: 'test-milestone',
+      })
+
+      expect(prompt1).toContain('Build a key-value store')
+
+      // Reset cache — next call will re-read from filesystem
+      assembler.resetPromptCache()
+
+      const prompt2 = await assembler.assembleSystemPrompt({
+        userId: TEST_UID,
+        sessionId,
+        milestoneId,
+        milestoneSlug: 'test-milestone',
+      })
+
+      // Should still work after cache reset
+      expect(prompt2).toContain('Build a key-value store')
+    })
+
     it('should cache milestone brief in Redis', async () => {
       const mockRedis = createMockRedis()
       const assembler = createContextAssembler({

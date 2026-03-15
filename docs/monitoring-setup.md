@@ -517,6 +517,92 @@ ORDER BY activity_date DESC, user_id DESC LIMIT 50;
 - If analytics queries cause performance issues at scale (unlikely at 100 users), convert to materialized views with periodic refresh — NOT needed at MVP.
 - Analytics views are read-only — they cannot affect write performance or user-facing routes.
 
+## External Configuration
+
+AI tutor prompts, model routing rules, and stuck detection thresholds are loaded from external files — no code deployment required to change them.
+
+### Configuration Files
+
+| Config Type | File Location | Format | Purpose |
+|---|---|---|---|
+| Tutor base prompt | `content/prompts/tutor-base.md` | Markdown with `{{template_vars}}` | System prompt for Socratic tutoring |
+| Stuck intervention prompt | `content/prompts/stuck-intervention.md` | Markdown with `{{template_vars}}` | System prompt for stuck detection interventions |
+| Model routing rules | `content/prompts/model-routing.yaml` | YAML | When to use Haiku vs Sonnet |
+| Stuck detection thresholds | `content/milestones/{slug}/metadata.yaml` | YAML (per-milestone) | Inactivity thresholds per milestone |
+
+### Admin Reload Endpoints
+
+Configuration changes are applied via admin endpoints — no server restart needed.
+
+**Authentication:** HTTP Basic Auth (same credentials as Bull Board)
+- Username: `MCC_ADMIN_USER` env var (default: `admin`)
+- Password: `MCC_ADMIN_PASSWORD` env var (required)
+
+```bash
+# Reload prompt templates only (tutor-base.md + stuck-intervention.md)
+curl -X POST -u admin:$MCC_ADMIN_PASSWORD http://localhost:3001/admin/reload-prompts
+
+# Reload all configuration (prompts + model routing + stuck detection cache)
+curl -X POST -u admin:$MCC_ADMIN_PASSWORD http://localhost:3001/admin/reload-config
+```
+
+**Response format:**
+```json
+{
+  "reloaded": ["model-routing", "prompts", "content-cache"],
+  "errors": [],
+  "timestamp": "2026-03-15T10:30:00.000Z"
+}
+```
+
+### Model Routing Configuration
+
+`content/prompts/model-routing.yaml` controls which Claude model handles each request:
+
+```yaml
+models:
+  haiku: "claude-haiku-4-5-20251001"
+  sonnet: "claude-sonnet-4-6-20250514"
+
+default_model: haiku
+
+# Rules evaluated in order — first match wins
+routing_rules:
+  - condition: stuck_intervention
+    model: sonnet
+    description: "Use Sonnet for stuck interventions"
+  - condition: compile_errors
+    model: sonnet
+    description: "Use Sonnet when submission has compile errors"
+  - condition: explain_pattern
+    model: sonnet
+    description: "Use Sonnet for conceptual explanation requests"
+    patterns:
+      - "explain"
+      - "what is"
+      - "how does"
+```
+
+**Adding new rules:** Add entries to `routing_rules`. Supported conditions: `stuck_intervention`, `compile_errors`, `explain_pattern`. Then call `POST /admin/reload-config`.
+
+### Stuck Detection Thresholds
+
+Per-milestone thresholds in `content/milestones/{slug}/metadata.yaml`:
+
+```yaml
+stuckDetection:
+  thresholdMinutes: 10      # Minutes of inactivity before stage 1
+  stage2OffsetSeconds: 60   # Seconds after stage 1 before stage 2
+```
+
+Changes are cached in Redis (3600s TTL). Call `POST /admin/reload-config` to invalidate cache immediately.
+
+### Validation & Fallback
+
+- **Model routing:** Invalid config logs error to Sentry, falls back to bundled defaults
+- **Prompt templates:** Missing files throw on first load; subsequent reload failures fall back to last-known-good cached version
+- **Stuck detection:** Invalid metadata returns `null` (frontend uses hardcoded fallback: 10min / 60s)
+
 ## Railway Service Configuration Files
 
 | Service | Config File |

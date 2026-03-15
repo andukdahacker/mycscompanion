@@ -252,6 +252,40 @@ describe('StuckContextAssembler', () => {
       expect(prompt).not.toContain('{{available_explainers}}')
     })
 
+    it('should re-read prompt from filesystem after resetPromptCache', async () => {
+      const mockRedis = createMockRedis()
+      const assembler = createStuckContextAssembler({
+        db,
+        redis: mockRedis,
+        contentRoot: CONTENT_FIXTURES_ROOT,
+        promptsRoot: PROMPTS_FIXTURES_ROOT,
+      })
+
+      const prompt1 = await assembler.assembleStuckInterventionPrompt({
+        userId: TEST_UID,
+        sessionId,
+        milestoneId,
+        milestoneSlug: 'test-milestone',
+        timeStuckMinutes: 5,
+      })
+
+      expect(prompt1).toContain('Stuck Intervention')
+
+      // Reset cache — next call will re-read from filesystem
+      assembler.resetPromptCache()
+
+      const prompt2 = await assembler.assembleStuckInterventionPrompt({
+        userId: TEST_UID,
+        sessionId,
+        milestoneId,
+        milestoneSlug: 'test-milestone',
+        timeStuckMinutes: 10,
+      })
+
+      // Should still work after cache reset
+      expect(prompt2).toContain('Stuck Intervention')
+    })
+
     it('should cache stuck intervention prompt template', async () => {
       const mockRedis = createMockRedis()
       const assembler = createStuckContextAssembler({

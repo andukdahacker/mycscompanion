@@ -26,6 +26,7 @@ const mockAnthropicService: AnthropicService = {
 
 const mockContextAssembler: ContextAssembler = {
   assembleSystemPrompt: vi.fn(async () => 'You are a tutor.'),
+  resetPromptCache: vi.fn(),
 }
 
 const mockRateLimiter: RateLimitChecker = {

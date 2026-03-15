@@ -1,0 +1,32 @@
+# Model routing configuration for AI tutor
+# Changes take effect on next request after admin reload or server restart
+
+models:
+  haiku: "claude-haiku-4-5-20251001"
+  sonnet: "claude-sonnet-4-6-20250514"
+
+default_model: haiku
+
+# Rules evaluated in order - first match wins
+# Each rule has a condition type and the model to use
+routing_rules:
+  - condition: stuck_intervention
+    model: sonnet
+    description: "Use Sonnet for stuck interventions (deeper analysis needed)"
+
+  - condition: compile_errors
+    model: sonnet
+    description: "Use Sonnet when submission has compile errors"
+
+  - condition: explain_pattern
+    model: sonnet
+    description: "Use Sonnet for conceptual explanation requests"
+    # Patterns matched using word boundaries (\b) to avoid false positives
+    # e.g., "explain" matches "can you explain X" but NOT "explaining"
+    patterns:
+      - "explain"
+      - "what is"
+      - "how does"
+      - "why does"
+      - "what happens"
+      - "how would"

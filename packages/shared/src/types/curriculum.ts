@@ -87,6 +87,26 @@ export interface ConceptExplainerAsset {
   readonly title: string | null
 }
 
+// --- Model Routing Config ---
+
+export type ModelRoutingCondition = 'stuck_intervention' | 'compile_errors' | 'explain_pattern'
+
+export interface ModelRoutingRule {
+  readonly condition: ModelRoutingCondition
+  readonly model: 'haiku' | 'sonnet'
+  readonly description: string
+  readonly patterns?: readonly string[]
+}
+
+export interface ModelRoutingConfig {
+  readonly models: {
+    readonly haiku: string
+    readonly sonnet: string
+  }
+  readonly default_model: 'haiku' | 'sonnet'
+  readonly routing_rules: readonly ModelRoutingRule[]
+}
+
 // --- Stuck Detection Config ---
 
 export interface StuckDetectionConfig {

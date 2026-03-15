@@ -2,6 +2,7 @@ import type { FastifyError, FastifyInstance } from 'fastify'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import fastifyStatic from '@fastify/static'
+import { readFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { Sentry } from './instrument.js'
 import { authPlugin } from './plugins/auth/index.js'
@@ -14,6 +15,10 @@ import { createContentLoader } from './plugins/curriculum/content-loader.js'
 import { progressPlugin } from './plugins/progress/index.js'
 import { accountPlugin } from './plugins/account/index.js'
 import { adminPlugin } from './plugins/admin/index.js'
+import { createContextAssembler } from './plugins/tutor/services/context-assembler.js'
+import { createStuckContextAssembler } from './plugins/tutor/services/stuck-context-assembler.js'
+import { resetModelRoutingConfigCache, loadModelRoutingConfigAsync, initConfigLoader } from './plugins/tutor/services/config-loader.js'
+import { db } from './shared/db.js'
 import { generateId } from './shared/id.js'
 import { redis } from './shared/redis.js'
 import { createBullMQConnection, createExecutionQueue, createExportQueue } from './shared/queue.js'
@@ -82,10 +87,21 @@ export async function buildApp(): Promise<FastifyInstance> {
   })
   const tutorRateLimiter = new RateLimiter({ redis, windowMs: 60_000, maxRequests: 30 })
   const anthropicApiKey = process.env['ANTHROPIC_API_KEY']
+
+  // Create context assemblers externally for DI into both tutor and admin plugins
+  const contextAssembler = createContextAssembler({ db, redis, log: fastify.log })
+  const stuckContextAssembler = createStuckContextAssembler({ db, redis, log: fastify.log })
+
+  // Initialize model routing config loader
+  initConfigLoader({ log: fastify.log })
+  await loadModelRoutingConfigAsync()
+
   await fastify.register(tutorPlugin, {
     prefix: '/api/tutor',
     redis,
     rateLimiter: tutorRateLimiter,
+    contextAssembler,
+    stuckContextAssembler,
     ...(anthropicApiKey ? { anthropicClient: new Anthropic({ apiKey: anthropicApiKey }) } : {}),
   })
   await fastify.register(curriculumPlugin, { prefix: '/api/curriculum', redis })
@@ -117,9 +133,40 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(progressPlugin, { prefix: '/api/progress', contentLoader })
   await fastify.register(accountPlugin, { prefix: '/api/account', exportQueue, firebaseAuth })
 
-  // Position 4: Admin tools (Bull Board) — after domain plugins, uses own auth (basic auth)
-  // Prefix scopes basicAuth hook + routes. setBasePath for UI link generation.
-  await fastify.register(adminPlugin, { prefix: '/admin/queues', executionQueue, exportQueue })
+  // Position 4: Admin tools (Bull Board + config reload) — after domain plugins, uses own auth (basic auth)
+  const promptsRoot = resolve(process.cwd(), '..', '..', 'content', 'prompts')
+  await fastify.register(adminPlugin, {
+    prefix: '/admin',
+    executionQueue,
+    exportQueue,
+    resetPromptCaches: () => {
+      contextAssembler.resetPromptCache()
+      stuckContextAssembler.resetPromptCache()
+    },
+    reloadModelRoutingConfig: async () => {
+      resetModelRoutingConfigCache()
+      await loadModelRoutingConfigAsync()
+    },
+    invalidateContentCache: async (milestoneSlug?: string) => {
+      if (milestoneSlug) {
+        await contentLoader.invalidateCache(milestoneSlug)
+      } else {
+        await contentLoader.invalidateAllCaches()
+      }
+    },
+    validatePromptFiles: async () => {
+      const errors: string[] = []
+      for (const file of ['tutor-base.md', 'stuck-intervention.md']) {
+        try {
+          const content = await readFile(join(promptsRoot, file), 'utf-8')
+          if (content.length === 0) errors.push(`${file} is empty`)
+        } catch {
+          errors.push(`${file} not found or unreadable`)
+        }
+      }
+      return errors
+    },
+  })
 
   // Cleanup on close
   fastify.addHook('onClose', async () => {

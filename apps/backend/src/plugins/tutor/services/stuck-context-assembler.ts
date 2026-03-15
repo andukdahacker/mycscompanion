@@ -12,15 +12,22 @@ import {
   loadConceptExplainerMetadata,
 } from './context-helpers.js'
 
+export interface StuckContextAssemblerLogger {
+  warn(obj: Record<string, unknown>, msg: string): void
+  error(obj: Record<string, unknown>, msg: string): void
+}
+
 export interface StuckContextAssemblerOptions {
   readonly db: Kysely<DB>
   readonly redis: RedisCache
   readonly contentRoot?: string
   readonly promptsRoot?: string
+  readonly log?: StuckContextAssemblerLogger
 }
 
 export interface StuckContextAssembler {
   assembleStuckInterventionPrompt(params: StuckAssembleParams): Promise<string>
+  resetPromptCache(): void
 }
 
 export interface StuckAssembleParams {
@@ -34,8 +41,19 @@ export interface StuckAssembleParams {
 const DEFAULT_CONTENT_ROOT = resolve(process.cwd(), '..', '..', 'content', 'milestones')
 const DEFAULT_PROMPTS_ROOT = resolve(process.cwd(), '..', '..', 'content', 'prompts')
 
+const EXPECTED_STUCK_TEMPLATE_VARS = [
+  '{{milestone_brief}}',
+  '{{current_code}}',
+  '{{criteria_status}}',
+  '{{stuck_criterion}}',
+  '{{time_stuck_minutes}}',
+  '{{recent_diffs}}',
+  '{{user_background}}',
+  '{{available_explainers}}',
+]
+
 export function createStuckContextAssembler(opts: StuckContextAssemblerOptions): StuckContextAssembler {
-  const { db, redis } = opts
+  const { db, redis, log } = opts
   const contentRoot = opts.contentRoot ?? DEFAULT_CONTENT_ROOT
   const promptsRoot = opts.promptsRoot ?? DEFAULT_PROMPTS_ROOT
 
@@ -43,8 +61,26 @@ export function createStuckContextAssembler(opts: StuckContextAssemblerOptions):
 
   async function loadPromptTemplate(): Promise<string> {
     if (cachedPromptTemplate) return cachedPromptTemplate
-    cachedPromptTemplate = await readFile(join(promptsRoot, 'stuck-intervention.md'), 'utf-8')
-    return cachedPromptTemplate
+
+    const filePath = join(promptsRoot, 'stuck-intervention.md')
+    try {
+      const content = await readFile(filePath, 'utf-8')
+      if (content.length === 0) {
+        log?.warn({ filePath }, 'Stuck intervention prompt file is empty')
+      }
+      const missingVars = EXPECTED_STUCK_TEMPLATE_VARS.filter((v) => !content.includes(v))
+      if (missingVars.length > 0) {
+        log?.warn({ filePath, missingVars }, 'Stuck intervention prompt is missing expected template variables')
+      }
+      cachedPromptTemplate = content
+      return content
+    } catch (err) {
+      if (cachedPromptTemplate) {
+        log?.error({ filePath, error: String(err) }, 'Failed to reload stuck intervention prompt — using cached version')
+        return cachedPromptTemplate
+      }
+      throw new Error(`Failed to load stuck intervention prompt from ${filePath}: ${String(err)}`)
+    }
   }
 
   async function computeStuckCriterion(userId: string, milestoneId: string): Promise<string> {
@@ -92,6 +128,10 @@ export function createStuckContextAssembler(opts: StuckContextAssemblerOptions):
   }
 
   return {
+    resetPromptCache(): void {
+      cachedPromptTemplate = null
+    },
+
     async assembleStuckInterventionPrompt(params: StuckAssembleParams): Promise<string> {
       const [
         template,
