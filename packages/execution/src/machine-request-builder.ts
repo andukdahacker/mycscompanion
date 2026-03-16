@@ -69,7 +69,7 @@ export function buildMachineRequest(
         exec: [
           'sh',
           '-c',
-          'ulimit -u 64 && go build -o main . 2>&1 && ./main test 2>&1',
+          'ulimit -u 256 && go build -o main . 2>&1 && ./main test 2>&1',
         ],
       },
       restart: {
