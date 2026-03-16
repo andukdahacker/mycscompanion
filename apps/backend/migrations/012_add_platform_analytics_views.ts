@@ -1,7 +1,7 @@
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
 
-export async function up(db: Kysely<never>): Promise<void> {
+export async function up(db: Kysely<any>): Promise<void> {
   // Daily signup aggregation for funnel analysis
   await sql`
     CREATE VIEW platform_signup_metrics AS
@@ -130,7 +130,7 @@ export async function up(db: Kysely<never>): Promise<void> {
   `.execute(db)
 }
 
-export async function down(db: Kysely<never>): Promise<void> {
+export async function down(db: Kysely<any>): Promise<void> {
   await sql`DROP VIEW IF EXISTS user_resource_consumption`.execute(db)
   await sql`DROP VIEW IF EXISTS milestone_time_to_completion`.execute(db)
   await sql`DROP VIEW IF EXISTS user_retention_daily`.execute(db)

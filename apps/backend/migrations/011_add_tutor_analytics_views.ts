@@ -1,7 +1,7 @@
 import type { Kysely } from 'kysely'
 import { sql } from 'kysely'
 
-export async function up(db: Kysely<never>): Promise<void> {
+export async function up(db: Kysely<any>): Promise<void> {
   // Denormalized view for browsing individual tutor conversations
   await sql`
     CREATE VIEW tutor_conversation_log AS
@@ -56,7 +56,7 @@ export async function up(db: Kysely<never>): Promise<void> {
   `.execute(db)
 }
 
-export async function down(db: Kysely<never>): Promise<void> {
+export async function down(db: Kysely<any>): Promise<void> {
   await sql`DROP VIEW IF EXISTS tutor_session_summary`.execute(db)
   await sql`DROP VIEW IF EXISTS tutor_conversation_log`.execute(db)
 }

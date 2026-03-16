@@ -1,4 +1,4 @@
-import { http, HttpResponse } from 'msw'
+import { http, type RequestHandler, HttpResponse } from 'msw'
 
 /** Fly Machine state type matching the Fly Machines API */
 export type MockFlyMachineState =
@@ -98,11 +98,18 @@ export interface SetupFlyApiHandlersOptions {
   }
 }
 
+/** Helper to create a JSON response compatible with MSW 2.12+ strict types.
+ *  MSW 2.12 narrowed HttpResponseResolver return types in a way that
+ *  HttpResponse.json() no longer satisfies — cast through unknown. */
+function jsonResponse(body: Record<string, unknown>, init?: { status: number }): HttpResponse<string> {
+  return HttpResponse.json(body, init) as unknown as HttpResponse<string>
+}
+
 /** Creates canonical msw handlers for the Fly Machines API.
  *  Import in test files and pass to `setupServer(...handlers)`. */
 export function setupFlyApiHandlers(
   options: SetupFlyApiHandlersOptions = {},
-): ReturnType<typeof http.post | typeof http.get | typeof http.delete>[] {
+): RequestHandler[] {
   const baseUrl = options.baseUrl ?? 'https://api.machines.dev'
   const appName = options.appName ?? 'mcc-execution'
   const basePath = `${baseUrl}/v1/apps/${appName}/machines`
@@ -115,7 +122,7 @@ export function setupFlyApiHandlers(
     // POST /v1/apps/{app}/machines — Create Machine
     http.post(basePath, async ({ request }) => {
       if (options.errorOn?.create) {
-        return HttpResponse.json(
+        return jsonResponse(
           { error: options.errorOn.create.message },
           { status: options.errorOn.create.status },
         )
@@ -127,18 +134,18 @@ export function setupFlyApiHandlers(
         const override = options.onCreateMachine(body)
         if (override) {
           currentMachine = override
-          return HttpResponse.json(currentMachine, { status: 200 })
+          return jsonResponse(currentMachine, { status: 200 })
         }
       }
 
       currentMachine = createMockFlyMachineResponse({ state: 'created' })
-      return HttpResponse.json(currentMachine, { status: 200 })
+      return jsonResponse(currentMachine, { status: 200 })
     }),
 
     // GET /v1/apps/{app}/machines/{id}/wait — Wait for state
     http.get(`${basePath}/:machineId/wait`, ({ request }) => {
       if (options.errorOn?.wait) {
-        return HttpResponse.json(
+        return jsonResponse(
           { error: options.errorOn.wait.message },
           { status: options.errorOn.wait.status },
         )
@@ -154,20 +161,20 @@ export function setupFlyApiHandlers(
         state: resolvedState,
         updated_at: new Date().toISOString(),
       }
-      return HttpResponse.json(currentMachine)
+      return jsonResponse(currentMachine)
     }),
 
     // GET /v1/apps/{app}/machines/{id} — Get Machine
     http.get(`${basePath}/:machineId`, ({ params }) => {
       if (options.errorOn?.get) {
-        return HttpResponse.json(
+        return jsonResponse(
           { error: options.errorOn.get.message },
           { status: options.errorOn.get.status },
         )
       }
 
       const machineId = params.machineId as string
-      return HttpResponse.json({
+      return jsonResponse({
         ...currentMachine,
         id: machineId,
       })
@@ -176,7 +183,7 @@ export function setupFlyApiHandlers(
     // POST /v1/apps/{app}/machines/{id}/stop — Stop Machine
     http.post(`${basePath}/:machineId/stop`, () => {
       if (options.errorOn?.stop) {
-        return HttpResponse.json(
+        return jsonResponse(
           { error: options.errorOn.stop.message },
           { status: options.errorOn.stop.status },
         )
@@ -187,19 +194,19 @@ export function setupFlyApiHandlers(
         state: 'stopped',
         updated_at: new Date().toISOString(),
       }
-      return HttpResponse.json(currentMachine)
+      return jsonResponse(currentMachine)
     }),
 
     // DELETE /v1/apps/{app}/machines/{id} — Destroy Machine
     http.delete(`${basePath}/:machineId`, () => {
       if (options.errorOn?.destroy) {
-        return HttpResponse.json(
+        return jsonResponse(
           { error: options.errorOn.destroy.message },
           { status: options.errorOn.destroy.status },
         )
       }
 
-      return new HttpResponse(null, { status: 200 })
+      return jsonResponse({}, { status: 200 })
     }),
   ]
 }
