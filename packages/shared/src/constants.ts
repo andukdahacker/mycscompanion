@@ -3,9 +3,9 @@ export const TRACKS = {
 } as const
 
 export const MILESTONES = {
-  KV_STORE: 'kv-store',
-  STORAGE_ENGINE: 'storage-engine',
-  BTREE_INDEXING: 'btree-indexing',
-  QUERY_PARSER: 'query-parser',
-  TRANSACTIONS: 'transactions',
+  KV_STORE: '01-kv-store',
+  STORAGE_ENGINE: '02-storage-engine',
+  BTREE_INDEXING: '03-btree-indexing',
+  QUERY_PARSER: '04-query-parser',
+  TRANSACTIONS: '05-transactions',
 } as const
