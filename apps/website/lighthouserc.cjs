@@ -1,5 +1,5 @@
 /** @type {import('@lhci/cli').Config} */
-const config = {
+module.exports = {
   ci: {
     collect: {
       staticDistDir: './dist',
@@ -32,5 +32,3 @@ const config = {
     },
   },
 }
-
-export { config as default }
