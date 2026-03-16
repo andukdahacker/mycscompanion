@@ -11,7 +11,7 @@ export const DEFAULT_FLY_MACHINE_CONFIG = {
   image: FLY_REGISTRY_IMAGE,
   cpuKind: 'performance',
   cpus: 2,
-  memoryMb: 512,
+  memoryMb: 1024,
   timeoutSeconds: 120,
   region: 'sin',
   autoDestroy: true,

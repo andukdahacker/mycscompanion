@@ -13,7 +13,7 @@ describe('DEFAULT_FLY_MACHINE_CONFIG', () => {
     expect(config.image).toBe('registry.fly.io/mcc-execution:latest')
     expect(config.cpuKind).toBe('performance')
     expect(config.cpus).toBe(2)
-    expect(config.memoryMb).toBe(512)
+    expect(config.memoryMb).toBe(1024)
     expect(config.timeoutSeconds).toBe(120)
     expect(config.autoDestroy).toBe(true)
     expect(config.restartPolicy).toBe('no')
