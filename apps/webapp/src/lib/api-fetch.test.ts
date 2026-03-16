@@ -15,6 +15,8 @@ const { apiFetch, ApiError } = await import('./api-fetch')
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
+const mockHeaders = { get: () => null }
+
 // Mock window.location — save original for cleanup
 const originalLocationDescriptor = Object.getOwnPropertyDescriptor(window, 'location')
 const mockLocation = { href: '' }
@@ -63,7 +65,7 @@ describe('apiFetch', () => {
 
   it('should retry with fresh token on 401 response', async () => {
     mockFetch
-      .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({ error: { code: 'UNAUTHORIZED', message: 'expired' } }) })
+      .mockResolvedValueOnce({ ok: false, status: 401, headers: mockHeaders, json: async () => ({ error: { code: 'UNAUTHORIZED', message: 'expired' } }) })
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: 'success' }) })
     mockGetIdToken
       .mockResolvedValueOnce('old-token')
@@ -80,6 +82,7 @@ describe('apiFetch', () => {
     mockFetch.mockResolvedValue({
       ok: false,
       status: 401,
+      headers: mockHeaders,
       json: async () => ({ error: { code: 'UNAUTHORIZED', message: 'invalid' } }),
     })
     mockGetIdToken
@@ -106,6 +109,7 @@ describe('apiFetch', () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 422,
+      headers: mockHeaders,
       json: async () => ({ error: { code: 'VALIDATION_ERROR', message: 'Invalid input' } }),
     })
 
@@ -125,6 +129,7 @@ describe('apiFetch', () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 500,
+      headers: mockHeaders,
       json: async () => { throw new Error('not json') },
     })
 
