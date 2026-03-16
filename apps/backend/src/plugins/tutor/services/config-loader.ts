@@ -11,7 +11,7 @@ const VALID_MODELS = new Set(['haiku', 'sonnet'])
 const DEFAULT_CONFIG: ModelRoutingConfig = {
   models: {
     haiku: 'claude-haiku-4-5-20251001',
-    sonnet: 'claude-sonnet-4-5-20241022',
+    sonnet: 'claude-sonnet-4-6',
   },
   default_model: 'haiku',
   routing_rules: [

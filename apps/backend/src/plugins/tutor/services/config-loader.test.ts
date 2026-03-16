@@ -18,7 +18,7 @@ const mockReadFile = vi.mocked(readFile)
 const VALID_CONFIG_YAML = `
 models:
   haiku: "claude-haiku-4-5-20251001"
-  sonnet: "claude-sonnet-4-5-20241022"
+  sonnet: "claude-sonnet-4-6"
 
 default_model: haiku
 
@@ -188,7 +188,7 @@ describe('loadModelRoutingConfigAsync', () => {
     const config = await loadModelRoutingConfigAsync()
 
     expect(config.models.haiku).toBe('claude-haiku-4-5-20251001')
-    expect(config.models.sonnet).toBe('claude-sonnet-4-5-20241022')
+    expect(config.models.sonnet).toBe('claude-sonnet-4-6')
     expect(config.default_model).toBe('haiku')
     expect(config.routing_rules).toHaveLength(3)
   })

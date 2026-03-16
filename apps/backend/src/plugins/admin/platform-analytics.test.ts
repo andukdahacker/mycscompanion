@@ -531,7 +531,7 @@ describe('user_resource_consumption view', () => {
       .values([
         { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'assistant', content: 'Haiku 1', model: 'claude-haiku-4-5-20251001' },
         { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'assistant', content: 'Haiku 2', model: 'claude-haiku-4-5-20251001' },
-        { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'assistant', content: 'Sonnet 1', model: 'claude-sonnet-4-5-20241022' },
+        { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'assistant', content: 'Sonnet 1', model: 'claude-sonnet-4-6' },
         { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'user', content: 'User msg', model: null },
       ])
       .execute()
