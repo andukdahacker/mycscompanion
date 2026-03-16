@@ -1,10 +1,5 @@
-import { afterAll, afterEach, vi } from 'vitest'
-import { destroyDb } from '../shared/db.js'
+import { afterEach, vi } from 'vitest'
 
 afterEach(() => {
   vi.restoreAllMocks()
-})
-
-afterAll(async () => {
-  await destroyDb()
 })
