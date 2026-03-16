@@ -1,5 +1,5 @@
 import { mergeConfig } from 'vitest/config'
-import { baseVitestConfig } from '@mycscompanion/config/vitest.config'
+import { baseVitestConfig } from '../../packages/config/vitest.config'
 
 export default mergeConfig(baseVitestConfig, {
   test: {

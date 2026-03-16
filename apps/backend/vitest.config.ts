@@ -1,5 +1,5 @@
 import { mergeConfig } from 'vitest/config'
-import { baseVitestConfig } from '@mycscompanion/config/vitest.config'
+import { baseVitestConfig } from '../../packages/config/vitest.config'
 
 const pgPort = process.env['CI'] === 'true' ? '5432' : '5433'
 
