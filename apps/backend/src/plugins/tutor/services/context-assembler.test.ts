@@ -12,6 +12,7 @@ function createMockRedis(): RedisCache {
   const store = new Map<string, string>()
   return {
     get: vi.fn(async (key: string) => store.get(key) ?? null),
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     set: vi.fn(async (key: string, value: string, _expiryMode: string, _duration: number) => {
       store.set(key, value)
       return 'OK'

@@ -4,7 +4,6 @@ import { generateId } from '../../../shared/id.js'
 import {
   processStaleSessionsForUser,
   backfillLatestSessionSummary,
-  STALE_SESSION_THRESHOLD_MS,
 } from './stale-session-handler.js'
 
 const TEST_UID = 'test-stale-handler-uid'

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import yaml from 'js-yaml'
-import type { ModelRoutingConfig, ModelRoutingRule } from '@mycscompanion/shared'
+import type { ModelRoutingConfig } from '@mycscompanion/shared'
 
 const DEFAULT_PROMPTS_ROOT = resolve(process.cwd(), '..', '..', 'content', 'prompts')
 

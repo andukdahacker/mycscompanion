@@ -134,16 +134,17 @@ export async function overviewRoutes(
     const briefExcerpt = brief ? brief.slice(0, BRIEF_EXCERPT_LENGTH) : ''
 
     let lastBenchmark: OverviewData['lastBenchmark'] = null
-    if (recentBenchmarks.length > 0) {
+    const latestBenchmark = recentBenchmarks[0]
+    if (latestBenchmark) {
       try {
-        const latest = recentBenchmarks[0]!
+        const latest = latestBenchmark
         const raw = typeof latest.raw_metrics === 'string' ? JSON.parse(latest.raw_metrics) : latest.raw_metrics
         const opsPerSec = typeof raw?.opsPerSec === 'number' ? raw.opsPerSec : 0
         const normalizedRatio = parseFloat(String(latest.normalized_ratio))
 
         let trend: 'up' | 'down' | 'flat' = 'flat'
-        if (recentBenchmarks.length >= 2) {
-          const previous = recentBenchmarks[1]!
+        const previous = recentBenchmarks[1]
+        if (previous) {
           const prevRaw = typeof previous.raw_metrics === 'string' ? JSON.parse(previous.raw_metrics) : previous.raw_metrics
           const prevOps = typeof prevRaw?.opsPerSec === 'number' ? prevRaw.opsPerSec : 0
           if (opsPerSec > prevOps) trend = 'up'

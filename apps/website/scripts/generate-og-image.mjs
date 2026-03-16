@@ -18,4 +18,5 @@ await page.screenshot({ path: outputPath, type: 'png' })
 
 await browser.close()
 
+// eslint-disable-next-line no-console
 console.log(`OG image saved to ${outputPath}`)

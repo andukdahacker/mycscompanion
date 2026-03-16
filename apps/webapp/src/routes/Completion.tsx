@@ -164,5 +164,5 @@ function Completion(): React.ReactElement {
   )
 }
 
-// Default export for React.lazy
+// eslint-disable-next-line no-restricted-syntax -- Default export required for React.lazy()
 export default Completion

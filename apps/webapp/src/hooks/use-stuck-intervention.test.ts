@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
+import type * as TanStackQuery from '@tanstack/react-query'
 import { useStuckIntervention } from './use-stuck-intervention'
 
 // Mock firebase auth
@@ -40,7 +41,7 @@ vi.mock('../components/workspace/workspace-a11y', () => ({
 // Mock TanStack Query
 const mockSetQueryData = vi.fn()
 vi.mock('@tanstack/react-query', async () => {
-  const actual = await vi.importActual<typeof import('@tanstack/react-query')>('@tanstack/react-query')
+  const actual = await vi.importActual<typeof TanStackQuery>('@tanstack/react-query')
   return {
     ...actual,
     useQueryClient: () => ({ setQueryData: mockSetQueryData }),

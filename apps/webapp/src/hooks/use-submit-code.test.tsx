@@ -4,7 +4,6 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { createTestQueryClient } from '@mycscompanion/config/test-utils/query-client'
 import type { QueryClient } from '@tanstack/react-query'
 import type { ExecutionEvent } from '@mycscompanion/execution'
-import type { CriterionResult } from '@mycscompanion/shared'
 import type { ReactNode } from 'react'
 import { useWorkspaceUIStore } from '../stores/workspace-ui-store'
 

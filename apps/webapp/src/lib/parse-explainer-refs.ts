@@ -28,7 +28,7 @@ export function parseExplainerRefs(text: string): ParsedMessage {
 
   while ((match = pattern.exec(text)) !== null) {
     explainerRefs.push({
-      filename: match[1]!,
+      filename: match[1] ?? '',
       position: match.index,
     })
   }

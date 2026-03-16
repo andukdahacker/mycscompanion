@@ -4,5 +4,5 @@ function Progress(): React.ReactElement {
   return <ProgressView />
 }
 
-// Default export for React.lazy
+// eslint-disable-next-line no-restricted-syntax -- Default export required for React.lazy()
 export default Progress

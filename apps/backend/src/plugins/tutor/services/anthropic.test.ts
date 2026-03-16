@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest'
 import { selectModel, createAnthropicService, classifyError } from './anthropic.js'
 import type { TutorContext, TutorRequestParams, AnthropicClient, AnthropicMessageStream } from './anthropic.js'
+import type * as ConfigLoaderModule from './config-loader.js'
 vi.mock('./config-loader.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./config-loader.js')>()
+  const actual = await importOriginal<typeof ConfigLoaderModule>()
   return {
     ...actual,
     loadModelRoutingConfig: vi.fn().mockReturnValue(actual.DEFAULT_CONFIG),

@@ -169,7 +169,7 @@ export async function trackProgressRoutes(
         criteriaTotal,
         completedAt,
         lastBenchmark: benchmarkMap.has(m.id)
-          ? { bestOpsPerSec: benchmarkMap.get(m.id)! }
+          ? { bestOpsPerSec: benchmarkMap.get(m.id) ?? 0 }
           : null,
       }
     })

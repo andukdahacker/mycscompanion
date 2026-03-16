@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import type { Kysely } from 'kysely'
 import type { Logger } from 'pino'
-import type { DB } from '@mycscompanion/shared'
+import type { DB, AcceptanceCriterion, CriterionResult } from '@mycscompanion/shared'
 import type { FlyMachineConfig } from '@mycscompanion/execution'
 import {
   type FlyClient,
@@ -175,7 +175,7 @@ export function createExecutionProcessor(
     /** Shared helper: load criteria by slug → evaluate → publish SSE → return JSON string */
     async function evaluateAndPublishCriteria(
       slug: string | null,
-      evaluateFn: (criteria: ReadonlyArray<import('@mycscompanion/shared').AcceptanceCriterion>) => ReadonlyArray<import('@mycscompanion/shared').CriterionResult>,
+      evaluateFn: (criteria: ReadonlyArray<AcceptanceCriterion>) => ReadonlyArray<CriterionResult>,
     ): Promise<string | null> {
       try {
         if (!slug) return null

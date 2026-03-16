@@ -54,7 +54,7 @@ function useAutoSave({ milestoneId, enabled }: UseAutoSaveOptions) {
         }
       }, AUTO_SAVE_DEBOUNCE_MS)
     },
-    [enabled, milestoneId] // eslint-disable-line react-hooks/exhaustive-deps
+    [enabled, milestoneId],
   )
 
   const saveImmediately = useCallback(
@@ -68,7 +68,7 @@ function useAutoSave({ milestoneId, enabled }: UseAutoSaveOptions) {
         mutation.mutate(code)
       }
     },
-    [enabled, milestoneId] // eslint-disable-line react-hooks/exhaustive-deps
+    [enabled, milestoneId],
   )
 
   // Cleanup timers on unmount

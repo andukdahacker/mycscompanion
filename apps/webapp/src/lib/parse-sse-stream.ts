@@ -8,7 +8,7 @@ export async function* parseSSEStream<T>(body: ReadableStream<Uint8Array>): Asyn
       if (done) break
       buffer += decoder.decode(value, { stream: true })
       const parts = buffer.split('\n\n')
-      buffer = parts.pop()!
+      buffer = parts.pop() ?? ''
       for (const part of parts) {
         if (part.startsWith(':')) continue // heartbeat
         const dataLine = part.split('\n').find((line) => line.startsWith('data: '))

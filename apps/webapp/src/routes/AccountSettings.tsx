@@ -227,4 +227,5 @@ function AccountSettings(): React.ReactElement {
   )
 }
 
+// eslint-disable-next-line no-restricted-syntax -- Default export required for React.lazy()
 export default AccountSettings

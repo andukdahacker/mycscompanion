@@ -17,5 +17,5 @@ function Overview(): React.ReactElement {
   return <MilestoneStartOverview data={data} />
 }
 
-// Default export for React.lazy
+// eslint-disable-next-line no-restricted-syntax -- Default export required for React.lazy()
 export default Overview
