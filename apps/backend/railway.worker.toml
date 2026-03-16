@@ -1,7 +1,7 @@
 # Worker service — separate Railway service pointing to same repo
 # Configure in Railway dashboard: root directory = apps/backend
 [build]
-buildCommand = "pnpm install --frozen-lockfile"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @mycscompanion/shared build && pnpm --filter @mycscompanion/execution build && pnpm --filter @mycscompanion/backend build"
 
 [deploy]
-startCommand = "cd apps/backend && pnpm tsx --import ./src/instrument.ts src/worker/worker.ts"
+startCommand = "cd apps/backend && node --import ./dist/instrument.js dist/worker/worker.js"

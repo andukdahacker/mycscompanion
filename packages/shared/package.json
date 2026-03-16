@@ -4,12 +4,19 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./*": "./src/*"
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./src/*",
+      "default": "./dist/*"
+    }
   },
   "scripts": {
     "postinstall": "test -f src/types/db.ts || printf '/** Stub — run: pnpm --filter shared db:types */\\n// eslint-disable-next-line @typescript-eslint/no-empty-object-type\\nexport interface DB {}\\n' > src/types/db.ts",
     "db:types": "dotenv -e ../../.env -- kysely-codegen --dialect postgres --out-file ./src/types/db.ts",
+    "build": "tsc",
     "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

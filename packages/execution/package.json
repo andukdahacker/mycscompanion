@@ -4,10 +4,17 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./*": "./src/*"
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./src/*",
+      "default": "./dist/*"
+    }
   },
   "scripts": {
+    "build": "tsc",
     "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
