@@ -33,10 +33,16 @@ export function buildMachineRequest(
   const encodedCode = Buffer.from(code, 'utf-8').toString('base64')
   const region = options.region ?? config.region
 
+  const goMod = 'module workspace\n\ngo 1.23\n'
+
   const files: Array<{ guest_path: string; raw_value: string }> = [
     {
       guest_path: '/workspace/main.go',
       raw_value: encodedCode,
+    },
+    {
+      guest_path: '/workspace/go.mod',
+      raw_value: Buffer.from(goMod, 'utf-8').toString('base64'),
     },
   ]
 
