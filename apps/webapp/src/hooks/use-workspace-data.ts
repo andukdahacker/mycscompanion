@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import type { MilestoneContent, AcceptanceCriterion, ConceptExplainerAsset, ResumeData, CriterionResult, StuckDetectionConfig } from '@mycscompanion/shared'
-import { apiFetch } from '../lib/api-fetch'
+import { apiFetch, API_URL } from '../lib/api-fetch'
 
 interface WorkspaceData {
   readonly milestoneName: string
@@ -49,7 +49,10 @@ function useWorkspaceData(milestoneId: string | undefined) {
         brief: content.brief,
         criteria: content.acceptanceCriteria,
         stuckDetection: content.stuckDetection ?? { thresholdMinutes: 10, stage2OffsetSeconds: 60 },
-        conceptExplainerAssets: content.conceptExplainerAssets,
+        conceptExplainerAssets: content.conceptExplainerAssets.map((a) => ({
+          ...a,
+          path: `${API_URL}${a.path}`,
+        })),
         restoredCriteria: resumeData.lastSubmissionCriteria,
         restoredSubmissionId: resumeData.lastSubmissionId,
       }
