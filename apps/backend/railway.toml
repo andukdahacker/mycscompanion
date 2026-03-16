@@ -1,5 +1,5 @@
 [build]
-buildCommand = "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter backend build"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter backend build"
 
 [deploy]
 startCommand = "node --import ./dist/instrument.js dist/server.js"

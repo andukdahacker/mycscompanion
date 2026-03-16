@@ -1,5 +1,5 @@
 [build]
-buildCommand = "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter webapp build"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter webapp build"
 
 [deploy]
 startCommand = "npx serve dist -s -l 3000"
