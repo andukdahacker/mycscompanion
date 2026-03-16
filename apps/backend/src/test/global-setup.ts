@@ -42,9 +42,3 @@ export async function setup(): Promise<void> {
   await db.destroy()
   if (error) throw error
 }
-
-export async function teardown(): Promise<void> {
-  // Destroy the shared db pool to avoid "Connection is closed" unhandled rejections
-  const { destroyDb } = await import('../shared/db.js')
-  await destroyDb()
-}
