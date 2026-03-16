@@ -72,16 +72,20 @@ describe('buildMachineRequest', () => {
         defaultCode,
         defaultOptions,
       )
-      expect(request.config.files).toHaveLength(1)
-      const file = request.config.files[0]
-      expect(file).toBeDefined()
-      expect(file!.guest_path).toBe('/workspace/main.go')
+      expect(request.config.files).toHaveLength(2)
+      const mainFile = request.config.files[0]
+      expect(mainFile).toBeDefined()
+      expect(mainFile!.guest_path).toBe('/workspace/main.go')
 
       const decoded = Buffer.from(
-        file!.raw_value,
+        mainFile!.raw_value,
         'base64',
       ).toString('utf-8')
       expect(decoded).toBe(defaultCode)
+
+      const goModFile = request.config.files[1]
+      expect(goModFile).toBeDefined()
+      expect(goModFile!.guest_path).toBe('/workspace/go.mod')
     })
   })
 
