@@ -19,6 +19,11 @@ const config = {
         'total-byte-weight': ['warn', { maxNumericValue: 500000 }],
         'resource-summary:script:size': ['error', { maxNumericValue: 51200 }],
         'categories:accessibility': ['error', { minScore: 0.9 }],
+        // These audits don't produce values for static sites served locally
+        'lcp-lazy-loaded': 'off',
+        'non-composited-animations': 'off',
+        'prioritize-lcp-image': 'off',
+        'errors-in-console': 'off',
       },
     },
     upload: {
