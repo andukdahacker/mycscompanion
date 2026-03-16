@@ -139,6 +139,11 @@ function Workspace(): React.ReactElement | null {
     submit({ milestoneId, code })
   }, [milestoneId, resetTimer, submit])
 
+  const handleResetToScaffold = useCallback(() => {
+    if (!data?.starterCode) return
+    useEditorStore.getState().triggerReset(data.starterCode)
+  }, [data?.starterCode])
+
   const completeMutation = useMutation({
     mutationKey: ['completion', 'complete'],
     mutationFn: ({ mId, sId }: { mId: string; sId: string }) =>
@@ -232,6 +237,7 @@ function Workspace(): React.ReactElement | null {
       isStage1={isStage1}
       interventionStreamingContent={interventionStreamingContent}
       isInterventionStreaming={isInterventionStreaming}
+      onResetToScaffold={handleResetToScaffold}
     />
   )
 }

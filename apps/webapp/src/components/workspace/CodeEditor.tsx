@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import Editor, { type OnMount, type BeforeMount } from '@monaco-editor/react'
 import { Skeleton } from '@mycscompanion/ui/src/components/ui/skeleton'
 import { defineMycscompanionTheme } from './monaco-theme'
@@ -10,8 +10,11 @@ interface CodeEditorProps {
   readonly onRun: () => void
 }
 
+type MonacoEditor = Parameters<OnMount>[0]
+
 function CodeEditor({ initialContent, onRun }: CodeEditorProps): React.ReactElement {
   const setContent = useEditorStore((s) => s.setContent)
+  const editorRef = useRef<MonacoEditor | null>(null)
 
   // Ref to avoid stale closure in Monaco addCommand handlers.
   // onMount is called ONCE by @monaco-editor/react — if onRun changes
@@ -19,11 +22,25 @@ function CodeEditor({ initialContent, onRun }: CodeEditorProps): React.ReactElem
   const onRunRef = useRef(onRun)
   onRunRef.current = onRun
 
+  // Watch for pendingReset and push into Monaco
+  useEffect(() => {
+    return useEditorStore.subscribe((state, prev) => {
+      if (state.pendingReset && state.pendingReset !== prev.pendingReset) {
+        const editor = editorRef.current
+        if (editor) {
+          editor.getModel()?.setValue(state.pendingReset)
+        }
+        useEditorStore.getState().clearPendingReset()
+      }
+    })
+  }, [])
+
   const handleBeforeMount: BeforeMount = useCallback((monaco) => {
     defineMycscompanionTheme(monaco)
   }, [])
 
   const handleMount: OnMount = useCallback((editor, monaco) => {
+    editorRef.current = editor
     // Sync initial content into the store so submit works without edits
     const model = editor.getModel()
     if (model) {

@@ -1,6 +1,17 @@
 import { Link } from 'react-router'
 import { Button } from '@mycscompanion/ui/src/components/ui/button'
-import { Play, BarChart3, Settings } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@mycscompanion/ui/src/components/ui/alert-dialog'
+import { Play, BarChart3, Settings, RotateCcw } from 'lucide-react'
 
 interface WorkspaceTopBarProps {
   readonly milestoneName: string
@@ -8,6 +19,7 @@ interface WorkspaceTopBarProps {
   readonly progress: number
   readonly onRun: () => void
   readonly onBenchmark: () => void
+  readonly onResetToScaffold?: () => void
 }
 
 function WorkspaceTopBar({
@@ -16,11 +28,12 @@ function WorkspaceTopBar({
   progress,
   onRun,
   onBenchmark,
+  onResetToScaffold,
 }: WorkspaceTopBarProps): React.ReactElement {
   return (
     <div className="flex h-12 shrink-0 items-center justify-between border-b bg-background px-4">
       <div className="flex items-center gap-3">
-        <span className="text-sm text-muted-foreground">mycscompanion</span>
+        <span className="text-sm text-muted-foreground">My CS Companion</span>
         <span className="text-muted-foreground">/</span>
         <span className="text-sm font-medium">
           Milestone {milestoneNumber}: {milestoneName} — {progress}%
@@ -28,6 +41,30 @@ function WorkspaceTopBar({
       </div>
 
       <div className="flex items-center gap-2">
+        {onResetToScaffold && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="sm" title="Reset to scaffold code">
+                <RotateCcw className="size-3.5" />
+                Reset
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Reset to scaffold code?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will replace your current code with the original starter code. Your current code will be lost.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={onResetToScaffold}>
+                  Reset
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
         <Link
           to="/settings"
           className="inline-flex items-center justify-center rounded-md text-sm font-medium text-muted-foreground hover:text-foreground h-8 w-8"

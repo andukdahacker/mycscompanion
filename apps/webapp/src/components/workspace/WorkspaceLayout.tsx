@@ -41,6 +41,7 @@ interface WorkspaceLayoutProps {
   readonly isStage1?: boolean
   readonly interventionStreamingContent?: string
   readonly isInterventionStreaming?: boolean
+  readonly onResetToScaffold?: () => void
 }
 
 function WorkspaceLayout({
@@ -67,6 +68,7 @@ function WorkspaceLayout({
   isStage1,
   interventionStreamingContent,
   isInterventionStreaming,
+  onResetToScaffold,
 }: WorkspaceLayoutProps): React.ReactElement {
   const breakpointMode = useWorkspaceUIStore((s) => s.breakpointMode)
   const setBreakpointMode = useWorkspaceUIStore((s) => s.setBreakpointMode)
@@ -150,7 +152,7 @@ function WorkspaceLayout({
     )
   }
 
-  const topBarProps = { milestoneName, milestoneNumber, progress, onRun, onBenchmark }
+  const topBarProps = { milestoneName, milestoneNumber, progress, onRun, onBenchmark, onResetToScaffold }
 
   // Small desktop layout (1024-1279px)
   if (breakpointMode === 'small-desktop') {

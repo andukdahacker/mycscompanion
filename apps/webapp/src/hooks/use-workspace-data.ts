@@ -11,6 +11,7 @@ interface WorkspaceData {
   readonly criteria: ReadonlyArray<AcceptanceCriterion>
   readonly stuckDetection: StuckDetectionConfig
   readonly conceptExplainerAssets: readonly ConceptExplainerAsset[]
+  readonly starterCode: string
   readonly restoredCriteria: ReadonlyArray<CriterionResult> | null
   readonly restoredSubmissionId: string | null
 }
@@ -36,15 +37,15 @@ function useWorkspaceData(milestoneId: string | undefined) {
       ])
 
       // Use snapshot code if available, otherwise fall back to starter code
-      const initialContent = resumeData.latestSnapshot?.code
-        ?? content.starterCode
-        ?? DEFAULT_GO_TEMPLATE
+      const starterCode = content.starterCode ?? DEFAULT_GO_TEMPLATE
+      const initialContent = resumeData.latestSnapshot?.code ?? starterCode
 
       return {
         milestoneName: content.title,
         milestoneNumber: content.position,
         progress: 0, // Computed from criteria in Workspace.tsx
         initialContent,
+        starterCode,
         brief: content.brief,
         criteria: content.acceptanceCriteria,
         stuckDetection: content.stuckDetection ?? { thresholdMinutes: 10, stage2OffsetSeconds: 60 },
