@@ -19,11 +19,13 @@ function ConceptExplainerDialog({ asset, open, onOpenChange }: ConceptExplainerD
       <DialogContent className="max-w-[90vw] max-h-[90vh] overflow-auto" aria-label={label} aria-describedby={undefined}>
         <DialogTitle className="sr-only">{label}</DialogTitle>
         {asset ? (
-          <img
-            src={asset.path}
-            alt={asset.altText ?? asset.name}
-            className="w-full"
-          />
+          <div className="rounded-lg bg-white p-4">
+            <img
+              src={asset.path}
+              alt={asset.altText ?? asset.name}
+              className="w-full"
+            />
+          </div>
         ) : null}
       </DialogContent>
     </Dialog>

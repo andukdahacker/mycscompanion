@@ -23,7 +23,7 @@ function ConceptExplainers({ assets }: ConceptExplainersProps): React.ReactEleme
               {asset.title ? (
                 <h3 className="mb-2 text-sm font-medium text-foreground">{asset.title}</h3>
               ) : null}
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rounded-lg bg-white p-2">
                 <button
                   type="button"
                   className="cursor-pointer border-0 bg-transparent p-0"
