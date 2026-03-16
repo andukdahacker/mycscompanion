@@ -1,8 +1,8 @@
 [build]
-buildCommand = "pnpm install --frozen-lockfile && pnpm --filter backend build"
+buildCommand = "pnpm install --frozen-lockfile"
 
 [deploy]
-startCommand = "node --import ./apps/backend/dist/instrument.js apps/backend/dist/server.js"
+startCommand = "cd apps/backend && pnpm tsx --import ./src/instrument.ts src/server.ts"
 healthcheckPath = "/health"
 healthcheckTimeout = 5
 preDeployCommand = "cd apps/backend && pnpm db:migrate"
