@@ -159,7 +159,7 @@ describe('tutor_conversation_log view', () => {
       .insertInto('tutor_messages')
       .values([
         { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'assistant', content: 'Haiku response', model: 'claude-haiku-4-5-20251001' },
-        { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'assistant', content: 'Sonnet response', model: 'claude-sonnet-4-6-20250514' },
+        { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'assistant', content: 'Sonnet response', model: 'claude-sonnet-4-5-20241022' },
         { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'user', content: 'User msg', model: null },
       ])
       .execute()
@@ -255,7 +255,7 @@ describe('tutor_session_summary view', () => {
         { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'user', content: 'Q1', model: null },
         { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'assistant', content: 'A1', model: 'claude-haiku-4-5-20251001' },
         { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'user', content: 'Q2', model: null },
-        { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'assistant', content: 'A2', model: 'claude-sonnet-4-6-20250514' },
+        { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'assistant', content: 'A2', model: 'claude-sonnet-4-5-20241022' },
         { id: generateId(), session_id: sessionId, user_id: TEST_UID, role: 'assistant', content: 'A3', model: 'claude-haiku-4-5-20251001' },
       ])
       .execute()

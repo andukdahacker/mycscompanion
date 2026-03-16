@@ -53,7 +53,7 @@ function createMockStream(chunks: string[], options?: { error?: Error }): Anthro
       const fullText = chunks.join('')
       finalHandler({
         content: [{ type: 'text', text: fullText }],
-        model: 'claude-sonnet-4-6-20250514',
+        model: 'claude-sonnet-4-5-20241022',
         usage: {
           input_tokens: 200,
           output_tokens: 100,
@@ -72,7 +72,7 @@ const mockStreamFn = vi.fn(() => createMockStream(['I noticed', ' you are stuck'
 const mockAnthropicService: AnthropicService = {
   createTutorResponse: vi.fn(async () => ({
     content: 'non-streaming response',
-    model: 'claude-sonnet-4-6-20250514',
+    model: 'claude-sonnet-4-5-20241022',
   })),
   createStreamingTutorResponse: mockStreamFn,
 }
@@ -176,7 +176,7 @@ describe('POST /api/tutor/:sessionId/stuck-intervention', () => {
     expect(completeEvent).toEqual(
       expect.objectContaining({
         type: 'message_complete',
-        model: 'claude-sonnet-4-6-20250514',
+        model: 'claude-sonnet-4-5-20241022',
         content: 'I noticed you are stuck on persistence.',
       })
     )
@@ -208,7 +208,7 @@ describe('POST /api/tutor/:sessionId/stuck-intervention', () => {
     // Assistant response
     expect(messages[1]?.role).toBe('assistant')
     expect(messages[1]?.content).toBe('I noticed you are stuck on persistence.')
-    expect(messages[1]?.model).toBe('claude-sonnet-4-6-20250514')
+    expect(messages[1]?.model).toBe('claude-sonnet-4-5-20241022')
   })
 
   it('should validate timeStuckMinutes minimum is 1', async () => {

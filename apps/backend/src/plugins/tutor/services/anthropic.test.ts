@@ -81,7 +81,7 @@ describe('selectModel', () => {
 
   it('should return Sonnet when compile errors are present', () => {
     const context: TutorContext = { userMessage: 'help', hasCompileErrors: true }
-    expect(selectModel(context)).toBe('claude-sonnet-4-6-20250514')
+    expect(selectModel(context)).toBe('claude-sonnet-4-5-20241022')
   })
 
   it('should return Sonnet for explanation patterns', () => {
@@ -96,18 +96,18 @@ describe('selectModel', () => {
 
     for (const msg of patterns) {
       const context: TutorContext = { userMessage: msg, hasCompileErrors: false }
-      expect(selectModel(context)).toBe('claude-sonnet-4-6-20250514')
+      expect(selectModel(context)).toBe('claude-sonnet-4-5-20241022')
     }
   })
 
   it('should prioritize compile errors over explanation patterns', () => {
     const context: TutorContext = { userMessage: 'explain this error', hasCompileErrors: true }
-    expect(selectModel(context)).toBe('claude-sonnet-4-6-20250514')
+    expect(selectModel(context)).toBe('claude-sonnet-4-5-20241022')
   })
 
   it('should return Sonnet when isStuckIntervention is true', () => {
     const context: TutorContext = { userMessage: 'some message', hasCompileErrors: false, isStuckIntervention: true }
-    expect(selectModel(context)).toBe('claude-sonnet-4-6-20250514')
+    expect(selectModel(context)).toBe('claude-sonnet-4-5-20241022')
   })
 
   it('should return Haiku for default when isStuckIntervention is undefined', () => {
@@ -117,7 +117,7 @@ describe('selectModel', () => {
 
   it('should follow config rules in order (first match wins)', () => {
     mockLoadConfig.mockReturnValue({
-      models: { haiku: 'claude-haiku-4-5-20251001', sonnet: 'claude-sonnet-4-6-20250514' },
+      models: { haiku: 'claude-haiku-4-5-20251001', sonnet: 'claude-sonnet-4-5-20241022' },
       default_model: 'haiku',
       routing_rules: [
         { condition: 'compile_errors', model: 'sonnet', description: 'test' },
@@ -127,18 +127,18 @@ describe('selectModel', () => {
 
     // compile_errors rule matches first, even though stuck_intervention would also match
     const context: TutorContext = { userMessage: 'help', hasCompileErrors: true, isStuckIntervention: true }
-    expect(selectModel(context)).toBe('claude-sonnet-4-6-20250514')
+    expect(selectModel(context)).toBe('claude-sonnet-4-5-20241022')
   })
 
   it('should fall back to default model when no rules match', () => {
     mockLoadConfig.mockReturnValue({
-      models: { haiku: 'claude-haiku-4-5-20251001', sonnet: 'claude-sonnet-4-6-20250514' },
+      models: { haiku: 'claude-haiku-4-5-20251001', sonnet: 'claude-sonnet-4-5-20241022' },
       default_model: 'sonnet',
       routing_rules: [],
     })
 
     const context: TutorContext = { userMessage: 'hello', hasCompileErrors: false }
-    expect(selectModel(context)).toBe('claude-sonnet-4-6-20250514')
+    expect(selectModel(context)).toBe('claude-sonnet-4-5-20241022')
   })
 
   it('should use custom model IDs from config', () => {
@@ -156,7 +156,7 @@ describe('selectModel', () => {
 
   it('should use custom patterns from config for explain_pattern rule', () => {
     mockLoadConfig.mockReturnValue({
-      models: { haiku: 'claude-haiku-4-5-20251001', sonnet: 'claude-sonnet-4-6-20250514' },
+      models: { haiku: 'claude-haiku-4-5-20251001', sonnet: 'claude-sonnet-4-5-20241022' },
       default_model: 'haiku',
       routing_rules: [
         {
@@ -170,7 +170,7 @@ describe('selectModel', () => {
 
     // Should match custom pattern
     const context1: TutorContext = { userMessage: 'help me understand pointers', hasCompileErrors: false }
-    expect(selectModel(context1)).toBe('claude-sonnet-4-6-20250514')
+    expect(selectModel(context1)).toBe('claude-sonnet-4-5-20241022')
 
     // Should NOT match the default "explain" pattern since it's not in custom patterns
     const context2: TutorContext = { userMessage: 'explain this', hasCompileErrors: false }
@@ -213,7 +213,7 @@ describe('createAnthropicService', () => {
     it('should select Sonnet when compile errors are present', async () => {
       const mockCreate = vi.fn().mockResolvedValue({
         content: [{ type: 'text', text: 'Look at line 5...' }],
-        model: 'claude-sonnet-4-6-20250514',
+        model: 'claude-sonnet-4-5-20241022',
       })
 
       const mockClient = createMockClient({ create: mockCreate })
@@ -228,7 +228,7 @@ describe('createAnthropicService', () => {
       await service.createTutorResponse(params)
 
       expect(mockCreate).toHaveBeenCalledWith(
-        expect.objectContaining({ model: 'claude-sonnet-4-6-20250514' }),
+        expect.objectContaining({ model: 'claude-sonnet-4-5-20241022' }),
         expect.anything(),
       )
     })
@@ -307,7 +307,7 @@ describe('createAnthropicService', () => {
       service.createStreamingTutorResponse(params)
 
       expect(mockStreamFn).toHaveBeenCalledWith(
-        expect.objectContaining({ model: 'claude-sonnet-4-6-20250514' }),
+        expect.objectContaining({ model: 'claude-sonnet-4-5-20241022' }),
         expect.anything(),
       )
     })
