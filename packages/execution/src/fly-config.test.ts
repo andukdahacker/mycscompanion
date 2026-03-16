@@ -11,9 +11,9 @@ describe('DEFAULT_FLY_MACHINE_CONFIG', () => {
   it('should satisfy FlyMachineConfig type with correct values', () => {
     const config: FlyMachineConfig = DEFAULT_FLY_MACHINE_CONFIG
     expect(config.image).toBe('registry.fly.io/mcc-execution:latest')
-    expect(config.cpuKind).toBe('shared')
-    expect(config.cpus).toBe(1)
-    expect(config.memoryMb).toBe(256)
+    expect(config.cpuKind).toBe('performance')
+    expect(config.cpus).toBe(2)
+    expect(config.memoryMb).toBe(512)
     expect(config.timeoutSeconds).toBe(120)
     expect(config.autoDestroy).toBe(true)
     expect(config.restartPolicy).toBe('no')
@@ -32,7 +32,7 @@ describe('DEFAULT_FLY_MACHINE_CONFIG', () => {
   })
 
   it('should use shared CPU kind', () => {
-    expect(DEFAULT_FLY_MACHINE_CONFIG.cpuKind).toBe('shared')
+    expect(DEFAULT_FLY_MACHINE_CONFIG.cpuKind).toBe('performance')
   })
 
   it('should auto-destroy machines after completion', () => {

@@ -59,9 +59,9 @@ describe('buildMachineRequest', () => {
         defaultCode,
         defaultOptions,
       )
-      expect(request.config.guest.cpu_kind).toBe('shared')
-      expect(request.config.guest.cpus).toBe(1)
-      expect(request.config.guest.memory_mb).toBe(256)
+      expect(request.config.guest.cpu_kind).toBe('performance')
+      expect(request.config.guest.cpus).toBe(2)
+      expect(request.config.guest.memory_mb).toBe(512)
     })
   })
 
