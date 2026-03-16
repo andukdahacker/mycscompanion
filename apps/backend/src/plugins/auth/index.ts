@@ -21,6 +21,7 @@ async function auth(fastify: FastifyInstance, opts: AuthPluginOptions): Promise<
     // Public routes — skip auth
     if (request.url === '/health' || request.url.startsWith('/health?')) return
     if (request.url === '/admin' || request.url.startsWith('/admin/')) return // Admin routes use basic auth, not Firebase
+    if (request.url.startsWith('/assets/')) return // Static assets (SVGs) loaded by <img> tags
 
     const authHeader = request.headers.authorization
     if (!authHeader?.startsWith('Bearer ')) {
