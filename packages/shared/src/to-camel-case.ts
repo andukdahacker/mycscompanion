@@ -21,7 +21,7 @@ function snakeToCamel(str: string): string {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Date)
 }
 
 /**

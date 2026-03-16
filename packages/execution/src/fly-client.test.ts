@@ -33,7 +33,7 @@ const TEST_CREATE_REQUEST: FlyCreateMachineRequest = {
   config: {
     image: 'registry.fly.io/mcc-execution:latest',
     auto_destroy: true,
-    guest: { cpu_kind: 'shared', cpus: 2, memory_mb: 512 },
+    guest: { cpu_kind: 'shared', cpus: 1, memory_mb: 256 },
     init: { exec: ['sh', '-c', 'echo hello'] },
     restart: { policy: 'no' },
     services: [],

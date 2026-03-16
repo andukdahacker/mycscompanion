@@ -60,8 +60,8 @@ describe('buildMachineRequest', () => {
         defaultOptions,
       )
       expect(request.config.guest.cpu_kind).toBe('shared')
-      expect(request.config.guest.cpus).toBe(2)
-      expect(request.config.guest.memory_mb).toBe(512)
+      expect(request.config.guest.cpus).toBe(1)
+      expect(request.config.guest.memory_mb).toBe(256)
     })
   })
 
@@ -141,13 +141,13 @@ describe('buildMachineRequest', () => {
       expect(request.region).toBe('lax')
     })
 
-    it('should not include region when neither config nor override set', () => {
+    it('should use default region from config when no override set', () => {
       const request = buildMachineRequest(
         DEFAULT_FLY_MACHINE_CONFIG,
         defaultCode,
         defaultOptions,
       )
-      expect(request.region).toBeUndefined()
+      expect(request.region).toBe('sin')
     })
   })
 
