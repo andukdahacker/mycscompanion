@@ -10,6 +10,7 @@ const mockApiFetch = vi.fn()
 
 vi.mock('../lib/api-fetch', () => ({
   apiFetch: (...args: unknown[]) => mockApiFetch(...args),
+  API_URL: 'http://localhost:3001',
 }))
 
 const MOCK_MILESTONE_CONTENT: MilestoneContent = {
