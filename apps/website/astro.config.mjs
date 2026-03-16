@@ -3,7 +3,7 @@ import tailwindcss from '@tailwindcss/vite'
 import sitemap from '@astrojs/sitemap'
 
 export default defineConfig({
-  site: 'https://mycscompanion.dev',
+  site: 'https://mycscompanion.com',
   integrations: [sitemap()],
   vite: {
     plugins: [tailwindcss()],

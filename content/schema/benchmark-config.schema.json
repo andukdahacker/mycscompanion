@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://mycscompanion.dev/schema/benchmark-config.schema.json",
+  "$id": "https://mycscompanion.com/schema/benchmark-config.schema.json",
   "title": "Milestone Benchmark Configuration",
   "description": "Defines the benchmark workload and target metrics for a mycscompanion milestone.",
   "type": "object",

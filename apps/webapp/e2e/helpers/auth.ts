@@ -2,7 +2,7 @@ import type { Browser, BrowserContext } from '@playwright/test'
 
 export const TEST_USER = {
   uid: 'test-user-canary',
-  email: 'canary@test.mycscompanion.dev',
+  email: 'canary@test.mycscompanion.com',
   displayName: 'E2E Canary User',
 } as const
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://mycscompanion.dev/schema/acceptance-criteria.schema.json",
+  "$id": "https://mycscompanion.com/schema/acceptance-criteria.schema.json",
   "title": "Milestone Acceptance Criteria",
   "description": "Defines the acceptance criteria for a mycscompanion milestone, used by Content CI and the learner progress system.",
   "type": "object",
