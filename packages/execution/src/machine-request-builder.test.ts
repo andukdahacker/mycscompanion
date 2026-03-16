@@ -99,7 +99,7 @@ describe('buildMachineRequest', () => {
       expect(request.config.init.exec).toEqual([
         'sh',
         '-c',
-        'ulimit -u 64 && go build -o main . 2>&1 && ./main 2>&1',
+        'ulimit -u 64 && go build -o main . 2>&1 && ./main test 2>&1',
       ])
     })
   })
