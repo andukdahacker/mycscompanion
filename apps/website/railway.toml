@@ -2,4 +2,4 @@
 buildCommand = "pnpm install --frozen-lockfile && pnpm --filter website build"
 
 [deploy]
-startCommand = "npx serve dist -l 3000"
+startCommand = "npx serve apps/website/dist -l 3000"

@@ -4,4 +4,4 @@
 buildCommand = "pnpm install --frozen-lockfile && pnpm --filter backend build"
 
 [deploy]
-startCommand = "node --import ./dist/instrument.js dist/worker/worker.js"
+startCommand = "node --import ./apps/backend/dist/instrument.js apps/backend/dist/worker/worker.js"

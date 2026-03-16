@@ -2,7 +2,7 @@
 buildCommand = "pnpm install --frozen-lockfile && pnpm --filter backend build"
 
 [deploy]
-startCommand = "node --import ./dist/instrument.js dist/server.js"
+startCommand = "node --import ./apps/backend/dist/instrument.js apps/backend/dist/server.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 5
-preDeployCommand = "pnpm --filter backend db:migrate"
+preDeployCommand = "cd apps/backend && pnpm db:migrate"
