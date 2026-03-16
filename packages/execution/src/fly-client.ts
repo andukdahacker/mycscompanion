@@ -132,25 +132,44 @@ export class FlyClient {
     return this.handleJsonResponse<FlyMachineResponse>(response)
   }
 
-  /** GET /v1/apps/{app}/machines/{id}/wait?state={state} — Wait for machine state */
+  /** GET /v1/apps/{app}/machines/{id}/wait?state={state} — Wait for machine state.
+   *  Fly's wait API accepts max 60s timeout, so this loops for longer durations. */
   async waitForState(
     machineId: string,
     state: FlyWaitState,
     options?: { instanceId?: string; timeoutSeconds?: number },
   ): Promise<FlyMachineResponse> {
-    const params = new URLSearchParams({ state })
-    if (options?.instanceId) {
-      params.set('instance_id', options.instanceId)
-    }
-    if (options?.timeoutSeconds) {
-      params.set('timeout', String(options.timeoutSeconds))
+    const totalTimeout = options?.timeoutSeconds ?? 60
+    const maxPerRequest = 60
+    let remaining = totalTimeout
+
+    while (remaining > 0) {
+      const chunk = Math.min(remaining, maxPerRequest)
+      const params = new URLSearchParams({ state, timeout: String(chunk) })
+      if (options?.instanceId) {
+        params.set('instance_id', options.instanceId)
+      }
+
+      const response = await fetch(
+        `${this.machinesPath}/${machineId}/wait?${params.toString()}`,
+        { method: 'GET', headers: this.headers },
+      )
+
+      if (response.ok) {
+        return await response.json() as FlyMachineResponse
+      }
+
+      // If Fly returned 408 (timeout) and we have more time, retry
+      if (response.status === 408 && remaining > chunk) {
+        remaining -= chunk
+        continue
+      }
+
+      await this.handleErrorResponse(response, machineId)
     }
 
-    const response = await fetch(
-      `${this.machinesPath}/${machineId}/wait?${params.toString()}`,
-      { method: 'GET', headers: this.headers },
-    )
-    return this.handleJsonResponse<FlyMachineResponse>(response, machineId)
+    // Should not reach here, but satisfy TypeScript
+    throw new FlyApiError({ message: 'Wait timeout exhausted', status: 408, machineId, isRetryable: false })
   }
 
   /** GET /v1/apps/{app}/machines/{id} — Get machine details */
