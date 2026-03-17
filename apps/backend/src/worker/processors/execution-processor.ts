@@ -61,78 +61,66 @@ function isLogEntryWithMessage(value: unknown): value is Readonly<{ message: str
 }
 
 /**
- * Starts streaming logs from the Fly Machines API NDJSON logs endpoint.
- * Uses the machine-specific endpoint at api.machines.dev (not the app-level
- * logs at api.fly.io which may not capture ephemeral machine output).
+ * Fetches logs from a stopped Fly Machine using the Machines API NDJSON
+ * streaming endpoint. Called AFTER the machine stops to avoid holding an
+ * open connection that starves other Machines API calls (same origin pool).
  *
- * Returns a handle with the collected messages and a stop() method.
- * Must be started BEFORE the machine finishes to avoid missing output.
+ * The endpoint streams NDJSON and never closes, so we abort after a timeout.
  */
-function startLogStream(
+async function fetchMachineLogs(
   appName: string,
   machineId: string,
   apiToken: string,
   logger: Logger,
-): { messages: string[]; stop: () => void; done: Promise<void> } {
+): Promise<string[]> {
   const messages: string[] = []
   const abortController = new AbortController()
+  // Short timeout — machine already stopped, logs should be immediately available
+  const timeout = setTimeout(() => abortController.abort(), 5_000)
 
-  // Safety timeout — if stop() is never called, abort after 30s
-  const safetyTimeout = setTimeout(() => abortController.abort(), 30_000)
+  try {
+    const url = new URL(`https://api.machines.dev/v1/apps/${encodeURIComponent(appName)}/machines/${encodeURIComponent(machineId)}/logs`)
 
-  const done = (async () => {
-    try {
-      // Use the Machines API logs endpoint — more reliable for ephemeral machines
-      const url = new URL(`https://api.machines.dev/v1/apps/${encodeURIComponent(appName)}/machines/${encodeURIComponent(machineId)}/logs`)
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiToken}` },
+      signal: abortController.signal,
+    })
 
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${apiToken}` },
-        signal: abortController.signal,
-      })
+    logger.info({ machineId, status: response.status, ok: response.ok }, 'log_fetch_response')
 
-      logger.info({ machineId, status: response.status, ok: response.ok, hasBody: !!response.body }, 'log_stream_response')
+    if (!response.ok || !response.body) return []
 
-      if (!response.ok || !response.body) return
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
 
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
 
-      while (true) {
-        const { done: streamDone, value } = await reader.read()
-        if (streamDone) break
-        buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() ?? ''
 
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          if (!line.trim()) continue
-          try {
-            const entry: unknown = JSON.parse(line)
-            if (isLogEntryWithMessage(entry)) {
-              messages.push(entry.message)
-            }
-          } catch {
-            messages.push(line)
+      for (const line of lines) {
+        if (!line.trim()) continue
+        try {
+          const entry: unknown = JSON.parse(line)
+          if (isLogEntryWithMessage(entry)) {
+            messages.push(entry.message)
           }
+        } catch {
+          messages.push(line)
         }
       }
-    } catch {
-      // AbortError expected when stop() is called — messages already collected
-    } finally {
-      clearTimeout(safetyTimeout)
     }
-  })()
-
-  return {
-    messages,
-    stop: () => {
-      // Give a brief window for any remaining buffered data before aborting
-      setTimeout(() => abortController.abort(), 2_000)
-    },
-    done,
+  } catch {
+    // AbortError expected when timeout fires — return what we have
+  } finally {
+    clearTimeout(timeout)
   }
+
+  return messages
 }
 
 function analyzeOutput(output: string[], exitCode: number | null): {
@@ -284,21 +272,15 @@ export function createExecutionProcessor(
         sequenceId: sequenceId++,
       })
 
-      // Start streaming logs BEFORE waiting for the machine to stop.
-      // The Fly logs API is real-time NDJSON — connecting after the machine
-      // stops risks missing output that's no longer in the stream buffer.
-      const logStream = startLogStream(flyAppName, createdMachineId, flyApiToken, logger)
-
       // Wait for stopped
       await flyClient.waitForState(createdMachineId, 'stopped', {
         instanceId,
         timeoutSeconds: flyConfig.timeoutSeconds,
       })
 
-      // Signal the log stream to finish (gives 2s grace for remaining data)
-      logStream.stop()
-      await logStream.done
-      const logMessages = logStream.messages
+      // Fetch logs sequentially AFTER machine stops — avoids connection pool
+      // contention with other Machines API calls on the same origin.
+      const logMessages = await fetchMachineLogs(flyAppName, createdMachineId, flyApiToken, logger)
 
       logger.info({ submissionId, machineId: createdMachineId, logLineCount: logMessages.length }, 'log_stream_collected')
 
