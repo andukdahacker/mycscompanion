@@ -25,6 +25,9 @@ if (!process.env['MCC_FLY_API_TOKEN']) {
 
 const flyApiToken = process.env['MCC_FLY_API_TOKEN']
 const flyAppName = process.env['MCC_FLY_APP_NAME'] ?? 'mcc-execution'
+// Platform logs API (api.fly.io) requires a personal/org access token, not a Machines API token.
+// Set MCC_FLY_LOGS_TOKEN via `fly auth token` output. Falls back to MCC_FLY_API_TOKEN.
+const flyLogsToken = process.env['MCC_FLY_LOGS_TOKEN'] ?? flyApiToken
 
 const redisUrl = process.env['REDIS_URL']
 if (!redisUrl) throw new Error('REDIS_URL environment variable is required')
@@ -60,6 +63,7 @@ const processor = createExecutionProcessor({
   eventPublisher,
   logger,
   flyApiToken,
+  flyLogsToken,
   flyAppName,
   contentLoader,
 })
