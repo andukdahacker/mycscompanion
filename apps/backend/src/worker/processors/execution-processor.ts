@@ -61,16 +61,18 @@ function isLogEntryWithMessage(value: unknown): value is Readonly<{ message: str
 }
 
 /**
- * Starts streaming logs from the Fly NDJSON logs API.
- * Returns a handle with the collected messages and a stop() method.
+ * Starts streaming logs from the Fly Machines API NDJSON logs endpoint.
+ * Uses the machine-specific endpoint at api.machines.dev (not the app-level
+ * logs at api.fly.io which may not capture ephemeral machine output).
  *
- * Must be started BEFORE the machine finishes — the Fly streaming endpoint
- * is real-time and may not replay logs from machines that already stopped.
+ * Returns a handle with the collected messages and a stop() method.
+ * Must be started BEFORE the machine finishes to avoid missing output.
  */
 function startLogStream(
   appName: string,
   machineId: string,
   apiToken: string,
+  logger: Logger,
 ): { messages: string[]; stop: () => void; done: Promise<void> } {
   const messages: string[] = []
   const abortController = new AbortController()
@@ -80,13 +82,16 @@ function startLogStream(
 
   const done = (async () => {
     try {
-      const url = new URL(`https://api.fly.io/api/v1/apps/${encodeURIComponent(appName)}/logs`)
-      url.searchParams.set('instance', machineId)
+      // Use the Machines API logs endpoint — more reliable for ephemeral machines
+      const url = new URL(`https://api.machines.dev/v1/apps/${encodeURIComponent(appName)}/machines/${encodeURIComponent(machineId)}/logs`)
 
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${apiToken}` },
         signal: abortController.signal,
       })
+
+      logger.info({ machineId, status: response.status, ok: response.ok, hasBody: !!response.body }, 'log_stream_response')
+
       if (!response.ok || !response.body) return
 
       const reader = response.body.getReader()
@@ -282,7 +287,7 @@ export function createExecutionProcessor(
       // Start streaming logs BEFORE waiting for the machine to stop.
       // The Fly logs API is real-time NDJSON — connecting after the machine
       // stops risks missing output that's no longer in the stream buffer.
-      const logStream = startLogStream(flyAppName, createdMachineId, flyApiToken)
+      const logStream = startLogStream(flyAppName, createdMachineId, flyApiToken, logger)
 
       // Wait for stopped
       await flyClient.waitForState(createdMachineId, 'stopped', {
