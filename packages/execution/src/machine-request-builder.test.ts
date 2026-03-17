@@ -24,13 +24,13 @@ describe('buildMachineRequest', () => {
       expect(request.config.image).toBe('registry.fly.io/mcc-execution:latest')
     })
 
-    it('should set auto_destroy to true', () => {
+    it('should set auto_destroy to false', () => {
       const request = buildMachineRequest(
         DEFAULT_FLY_MACHINE_CONFIG,
         defaultCode,
         defaultOptions,
       )
-      expect(request.config.auto_destroy).toBe(true)
+      expect(request.config.auto_destroy).toBe(false)
     })
 
     it('should set restart policy to no', () => {
