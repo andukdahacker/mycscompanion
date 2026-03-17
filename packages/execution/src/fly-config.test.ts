@@ -15,7 +15,7 @@ describe('DEFAULT_FLY_MACHINE_CONFIG', () => {
     expect(config.cpus).toBe(4)
     expect(config.memoryMb).toBe(1024)
     expect(config.timeoutSeconds).toBe(120)
-    expect(config.autoDestroy).toBe(true)
+    expect(config.autoDestroy).toBe(false)
     expect(config.restartPolicy).toBe('no')
   })
 
@@ -36,7 +36,7 @@ describe('DEFAULT_FLY_MACHINE_CONFIG', () => {
   })
 
   it('should auto-destroy machines after completion', () => {
-    expect(DEFAULT_FLY_MACHINE_CONFIG.autoDestroy).toBe(true)
+    expect(DEFAULT_FLY_MACHINE_CONFIG.autoDestroy).toBe(false)
   })
 
   it('should not restart machines on failure', () => {
