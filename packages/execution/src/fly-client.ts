@@ -159,6 +159,11 @@ export class FlyClient {
         return await response.json() as FlyMachineResponse
       }
 
+      // 404 when waiting for 'stopped' means machine was auto-destroyed after stopping
+      if (response.status === 404 && state === 'stopped') {
+        return { id: machineId, state: 'destroyed' } as FlyMachineResponse
+      }
+
       // If Fly returned 408 (timeout) and we have more time, retry
       if (response.status === 408 && remaining > chunk) {
         remaining -= chunk
