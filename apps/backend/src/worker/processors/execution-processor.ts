@@ -61,39 +61,19 @@ function isLogEntryWithMessage(value: unknown): value is Readonly<{ message: str
 }
 
 /**
- * Fetches logs from a stopped Fly Machine using the Machines API NDJSON
- * streaming endpoint. Called AFTER the machine stops to avoid holding an
- * open connection that starves other Machines API calls (same origin pool).
- *
- * The endpoint streams NDJSON and never closes, so we abort after a timeout.
+ * Read NDJSON log lines from a streaming response body.
+ * Extracts the `message` field from each JSON line.
+ * Aborts via the provided signal after collecting available data.
  */
-async function fetchMachineLogs(
-  appName: string,
-  machineId: string,
-  apiToken: string,
-  logger: Logger,
+async function readNdjsonMessages(
+  body: ReadableStream<Uint8Array>,
 ): Promise<string[]> {
   const messages: string[] = []
-  const abortController = new AbortController()
-  // Short timeout — machine already stopped, logs should be immediately available
-  const timeout = setTimeout(() => abortController.abort(), 5_000)
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
 
   try {
-    const url = new URL(`https://api.machines.dev/v1/apps/${encodeURIComponent(appName)}/machines/${encodeURIComponent(machineId)}/logs`)
-
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiToken}` },
-      signal: abortController.signal,
-    })
-
-    logger.info({ machineId, status: response.status, ok: response.ok }, 'log_fetch_response')
-
-    if (!response.ok || !response.body) return []
-
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
@@ -115,12 +95,86 @@ async function fetchMachineLogs(
       }
     }
   } catch {
-    // AbortError expected when timeout fires — return what we have
-  } finally {
-    clearTimeout(timeout)
+    // AbortError expected — return what we have
   }
 
   return messages
+}
+
+/**
+ * Fetches logs from a stopped Fly Machine.
+ * Tries the Machines API endpoint first, falls back to the platform logs API.
+ * Both are streaming NDJSON that never close, so we abort after a timeout.
+ */
+async function fetchMachineLogs(
+  appName: string,
+  machineId: string,
+  apiToken: string,
+  logger: Logger,
+): Promise<string[]> {
+  // Try two endpoints — the Machines API and the platform logs API use
+  // different auth scopes and have different data availability windows.
+  const endpoints = [
+    {
+      name: 'machines-api',
+      url: `https://api.machines.dev/v1/apps/${encodeURIComponent(appName)}/machines/${encodeURIComponent(machineId)}/logs`,
+    },
+    {
+      name: 'platform-logs',
+      url: `https://api.fly.io/api/v1/apps/${encodeURIComponent(appName)}/logs?instance=${encodeURIComponent(machineId)}`,
+    },
+  ]
+
+  for (const endpoint of endpoints) {
+    const abortController = new AbortController()
+    const timeout = setTimeout(() => abortController.abort(), 5_000)
+
+    try {
+      const response = await fetch(endpoint.url, {
+        headers: { Authorization: `Bearer ${apiToken}` },
+        signal: abortController.signal,
+      })
+
+      logger.info({
+        machineId,
+        endpoint: endpoint.name,
+        status: response.status,
+        ok: response.ok,
+      }, 'log_fetch_response')
+
+      if (!response.ok || !response.body) {
+        // Try to read error body for debugging
+        try {
+          const errBody = await response.text()
+          logger.warn({ machineId, endpoint: endpoint.name, status: response.status, body: errBody.slice(0, 500) }, 'log_fetch_error_body')
+        } catch { /* ignore */ }
+        continue
+      }
+
+      const messages = await readNdjsonMessages(response.body)
+
+      if (messages.length > 0) {
+        logger.info({ machineId, endpoint: endpoint.name, messageCount: messages.length }, 'log_fetch_success')
+        return messages
+      }
+
+      logger.info({ machineId, endpoint: endpoint.name }, 'log_fetch_empty')
+    } catch (err) {
+      const isAbort = err instanceof Error && err.name === 'AbortError'
+      if (!isAbort) {
+        logger.warn({
+          machineId,
+          endpoint: endpoint.name,
+          error: err instanceof Error ? err.message : String(err),
+        }, 'log_fetch_failed')
+      }
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
+  logger.warn({ machineId }, 'log_fetch_all_endpoints_empty')
+  return []
 }
 
 function analyzeOutput(output: string[], exitCode: number | null): {
