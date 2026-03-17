@@ -32,7 +32,7 @@ describe('DEFAULT_FLY_MACHINE_CONFIG', () => {
   })
 
   it('should use shared CPU kind', () => {
-    expect(DEFAULT_FLY_MACHINE_CONFIG.cpuKind).toBe('performance')
+    expect(DEFAULT_FLY_MACHINE_CONFIG.cpuKind).toBe('shared')
   })
 
   it('should auto-destroy machines after completion', () => {
