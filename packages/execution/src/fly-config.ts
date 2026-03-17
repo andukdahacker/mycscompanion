@@ -9,8 +9,8 @@ export const getExecutionImageRef = (): string =>
 
 export const DEFAULT_FLY_MACHINE_CONFIG = {
   image: FLY_REGISTRY_IMAGE,
-  cpuKind: 'performance',
-  cpus: 2,
+  cpuKind: 'shared',
+  cpus: 4,
   memoryMb: 1024,
   timeoutSeconds: 120,
   region: 'sin',
