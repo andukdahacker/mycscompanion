@@ -60,34 +60,42 @@ function isLogEntryWithMessage(value: unknown): value is Readonly<{ message: str
   return typeof value.message === 'string'
 }
 
-async function fetchMachineLogs(
+/**
+ * Starts streaming logs from the Fly NDJSON logs API.
+ * Returns a handle with the collected messages and a stop() method.
+ *
+ * Must be started BEFORE the machine finishes — the Fly streaming endpoint
+ * is real-time and may not replay logs from machines that already stopped.
+ */
+function startLogStream(
   appName: string,
   machineId: string,
   apiToken: string,
-): Promise<string[]> {
-  const url = new URL(`https://api.fly.io/api/v1/apps/${encodeURIComponent(appName)}/logs`)
-  url.searchParams.set('instance', machineId)
+): { messages: string[]; stop: () => void; done: Promise<void> } {
+  const messages: string[] = []
   const abortController = new AbortController()
-  const timeout = setTimeout(() => abortController.abort(), 10_000)
 
-  try {
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiToken}` },
-      signal: abortController.signal,
-    })
-    if (!response.ok || !response.body) return []
+  // Safety timeout — if stop() is never called, abort after 30s
+  const safetyTimeout = setTimeout(() => abortController.abort(), 30_000)
 
-    // Fly logs API is a streaming NDJSON endpoint that never closes.
-    // Read lines until abort timeout fires.
-    const messages: string[] = []
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-
+  const done = (async () => {
     try {
+      const url = new URL(`https://api.fly.io/api/v1/apps/${encodeURIComponent(appName)}/logs`)
+      url.searchParams.set('instance', machineId)
+
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${apiToken}` },
+        signal: abortController.signal,
+      })
+      if (!response.ok || !response.body) return
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
       while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+        const { done: streamDone, value } = await reader.read()
+        if (streamDone) break
         buffer += decoder.decode(value, { stream: true })
 
         const lines = buffer.split('\n')
@@ -106,12 +114,19 @@ async function fetchMachineLogs(
         }
       }
     } catch {
-      // AbortError expected when timeout fires — return what we have
+      // AbortError expected when stop() is called — messages already collected
+    } finally {
+      clearTimeout(safetyTimeout)
     }
+  })()
 
-    return messages
-  } finally {
-    clearTimeout(timeout)
+  return {
+    messages,
+    stop: () => {
+      // Give a brief window for any remaining buffered data before aborting
+      setTimeout(() => abortController.abort(), 2_000)
+    },
+    done,
   }
 }
 
@@ -264,14 +279,23 @@ export function createExecutionProcessor(
         sequenceId: sequenceId++,
       })
 
+      // Start streaming logs BEFORE waiting for the machine to stop.
+      // The Fly logs API is real-time NDJSON — connecting after the machine
+      // stops risks missing output that's no longer in the stream buffer.
+      const logStream = startLogStream(flyAppName, createdMachineId, flyApiToken)
+
       // Wait for stopped
       await flyClient.waitForState(createdMachineId, 'stopped', {
         instanceId,
         timeoutSeconds: flyConfig.timeoutSeconds,
       })
 
-      // Fetch logs and extract exit code
-      const logMessages = await fetchMachineLogs(flyAppName, createdMachineId, flyApiToken)
+      // Signal the log stream to finish (gives 2s grace for remaining data)
+      logStream.stop()
+      await logStream.done
+      const logMessages = logStream.messages
+
+      logger.info({ submissionId, machineId: createdMachineId, logLineCount: logMessages.length }, 'log_stream_collected')
 
       // Try to get exit code from machine details
       let exitCode: number | null = null
@@ -290,6 +314,15 @@ export function createExecutionProcessor(
       // Truncate log output to prevent oversized DB entries
       const truncatedMessages = truncateOutput(logMessages, MAX_OUTPUT_BYTES)
       const analysis = analyzeOutput(truncatedMessages, exitCode)
+
+      logger.info({
+        submissionId,
+        exitCode,
+        isUserError: analysis.isUserError,
+        compilationSucceeded: analysis.compilationSucceeded,
+        outputLength: analysis.combinedOutput.length,
+        outputPreview: analysis.combinedOutput.slice(0, 500),
+      }, 'execution_analysis')
 
       // Publish output events
       if (!analysis.compilationSucceeded) {
