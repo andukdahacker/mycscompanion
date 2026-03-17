@@ -14,6 +14,6 @@ export const DEFAULT_FLY_MACHINE_CONFIG = {
   memoryMb: 1024,
   timeoutSeconds: 120,
   region: 'sin',
-  autoDestroy: true,
+  autoDestroy: false,
   restartPolicy: 'no',
 } as const satisfies FlyMachineConfig
