@@ -67,27 +67,52 @@ async function fetchMachineLogs(
 ): Promise<string[]> {
   const url = new URL(`https://api.fly.io/api/v1/apps/${encodeURIComponent(appName)}/logs`)
   url.searchParams.set('instance', machineId)
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${apiToken}` },
-    signal: AbortSignal.timeout(10_000),
-  })
-  if (!response.ok) return []
-  const text = await response.text()
-  return text
-    .trim()
-    .split('\n')
-    .filter(Boolean)
-    .flatMap((line) => {
-      try {
-        const entry: unknown = JSON.parse(line)
-        if (isLogEntryWithMessage(entry)) {
-          return [entry.message]
-        }
-        return []
-      } catch {
-        return [line]
-      }
+  const abortController = new AbortController()
+  const timeout = setTimeout(() => abortController.abort(), 10_000)
+
+  try {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiToken}` },
+      signal: abortController.signal,
     })
+    if (!response.ok || !response.body) return []
+
+    // Fly logs API is a streaming NDJSON endpoint that never closes.
+    // Read lines until abort timeout fires.
+    const messages: string[] = []
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const entry: unknown = JSON.parse(line)
+            if (isLogEntryWithMessage(entry)) {
+              messages.push(entry.message)
+            }
+          } catch {
+            messages.push(line)
+          }
+        }
+      }
+    } catch {
+      // AbortError expected when timeout fires — return what we have
+    }
+
+    return messages
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 function analyzeOutput(output: string[], exitCode: number | null): {
