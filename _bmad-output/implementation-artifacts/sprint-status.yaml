@@ -151,3 +151,11 @@ development_status:
   10-4-analytics-and-reporting: done
   10-5-external-configuration-for-tutor-and-stuck-detection: done
   epic-10-retrospective: optional
+
+  # Epic 11: Persistent Execution Service (Architecture Pivot)
+  epic-11: in-progress
+  11-1-go-execution-server-and-dockerfile: done
+  11-2-backend-integration-and-execution-processor-rewrite: backlog
+  11-3-fly-deployment-cutover-and-e2e-validation: backlog
+  11-4-ci-cd-pipeline-and-documentation-cleanup: backlog
+  epic-11-retrospective: optional

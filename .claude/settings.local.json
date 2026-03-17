@@ -21,7 +21,9 @@
       "Bash(gh api:*)",
       "WebFetch(domain:pmnd.rs)",
       "Bash(curl:*)",
-      "WebFetch(domain:react-resizable-panels.vercel.app)"
+      "WebFetch(domain:react-resizable-panels.vercel.app)",
+      "Bash(grep:*)",
+      "Bash(gh run:*)"
     ]
   }
 }

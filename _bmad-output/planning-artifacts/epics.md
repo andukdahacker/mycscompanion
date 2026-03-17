@@ -1496,3 +1496,108 @@ So that I can tune the learning experience based on observed behavior.
 **And** configuration changes take effect on next request or server restart — no code deployment required
 **And** invalid configuration is validated on load with clear error messages logged to Sentry
 **And** a default configuration is bundled with the codebase as a fallback if external config is missing
+
+---
+
+## Epic 11: Persistent Execution Service (Architecture Pivot)
+
+**Goal:** Replace the ephemeral Fly Machines execution model (Stories 3.1-3.3) with a persistent Go HTTP execution service that returns stdout/stderr directly in the HTTP response. Eliminates ~2min cold starts and fixes broken stdout capture (0% output). Target: <5s round-trip, 100% output capture, ~70% code reduction in execution processor.
+
+**Supersedes:** Stories 3.1, 3.2, 3.3 execution approach (ephemeral Fly Machines)
+**ADR:** `_bmad-output/implementation-artifacts/adr-persistent-execution-service.md`
+**Research:** `_bmad-output/planning-artifacts/research/technical-browser-code-execution-research-2026-03-17.md`
+
+**FRs covered:** FR4, FR20, FR21, FR22, FR24
+**NFRs:** NFR-P1, NFR-P2, NFR-S1, NFR-R4, NFR-R6, NFR-SC1, NFR-SC5
+
+**Critical production failures driving this epic:**
+1. ~2 minute cold starts per submission (Fly Machine provisioning: 30-90s before code even compiles)
+2. Stdout capture completely broken (Fly Machines API returns 404 for per-machine logs; platform logs API returns 401 with Machines API tokens)
+
+### Story 11.1: Go Execution Server & Dockerfile
+
+As a **developer**,
+I want a persistent Go HTTP execution service that compiles and runs user Go code,
+So that code submissions return output directly in the HTTP response without VM provisioning.
+
+**Acceptance Criteria:**
+
+**Given** the execution service needs to compile and run learner Go code
+**When** an HTTP POST request is sent to `/execute` with base64-encoded Go source
+**Then** a Go HTTP server in `infra/fly-execution/server/` handles the request with `main.go` (HTTP server, routing) and `executor.go` (subprocess management, tmpdir lifecycle, timeout)
+**And** the server creates an isolated temporary workspace per request (`os.MkdirTemp`), writes `main.go` and `go.mod`, runs `go build` with timeout, runs the binary with args and timeout, and returns structured JSON: `{ stdout, stderr, exit_code, duration_ms, build_duration_ms, run_duration_ms }`
+**And** cleanup of temporary workspaces happens via `defer os.RemoveAll` (runs even on panic)
+**And** a `/health` endpoint returns 200 OK for Fly.io health checks
+**And** authentication is enforced via `Authorization: Bearer <MCC_EXECUTION_SECRET>` on every `/execute` request
+**And** a semaphore caps concurrent executions (e.g., 10) to prevent CPU/memory exhaustion
+**And** subprocess isolation includes: `ulimit -u 256` (fork bomb prevention), `context.WithTimeout` (kills subprocess tree after N seconds), isolated tmpdir per request, non-root `runner` user
+**And** the Dockerfile at `infra/fly-execution/Dockerfile` uses multi-stage build: Stage 1 builds the Go server binary, Stage 2 is the runtime image with Go toolchain (needed for compiling user code) + the server binary + `runner` user
+**And** the Go build cache is pre-warmed at container startup by compiling a hello-world program that imports common stdlib packages
+**And** the server is tested locally with Docker: `docker build && docker run -p 8080:8080` + curl tests
+**And** Go unit tests and integration tests exist using `net/http/httptest` covering: successful compilation, compilation errors (invalid Go code returns stderr), timeout handling (infinite loop terminates correctly), concurrent request isolation, fork bomb prevention, authentication rejection (missing/wrong token)
+**And** HTTP response is always 200 OK — `exit_code` conveys success/failure (0 = success, 2 = compilation failure, non-zero = runtime failure)
+
+### Story 11.2: Backend Integration & Execution Processor Rewrite
+
+As a **developer**,
+I want the BullMQ execution worker to call the persistent execution service via a single HTTP POST,
+So that the execution pipeline is simplified from 5+ API calls to 1 and stdout capture works reliably.
+
+**Acceptance Criteria:**
+
+**Given** the persistent execution service from Story 11.1 is available
+**When** a code submission job is processed by the BullMQ worker
+**Then** a new `execution-service-client.ts` in `packages/execution/` encapsulates the HTTP POST to `/execute` with `ExecuteRequest` and `ExecuteResponse` types matching the ADR specification
+**And** the execution processor is rewritten: the entire Fly Machine lifecycle (create → wait started → wait stopped → fetch logs → get exit code → destroy) is replaced by a single call to `ExecutionServiceClient.execute()`
+**And** the `ExecuteResponse.stdout` is used directly for criteria evaluation (replaces broken log-fetched output)
+**And** the `ExecuteResponse.stderr` is used for compilation error display
+**And** the `ExecuteResponse.exit_code` determines success/failure (replaces `analyzeOutput` + machine state inspection)
+**And** SSE event publishing is preserved: `output` event with stdout, `compile_error` event with stderr, `complete` event with exit code and criteria results, `error` event for platform failures, `timeout` event for execution timeouts
+**And** BullMQ job handling, retry logic, and concurrency settings are preserved unchanged
+**And** criteria evaluation logic is preserved unchanged (evaluates against stdout from HTTP response instead of log messages)
+**And** benchmark phase integration point is preserved (when implemented, uses another `/execute` call with reference code)
+**And** database updates to `submissions` table are preserved — `execution_result` JSON shape is unchanged
+**And** `fly-config.ts` is simplified to contain only `executionServiceUrl` (from `MCC_EXECUTION_URL`) and timeout settings
+**And** dead code is removed: `fly-client.ts`, `fly-api-types.ts`, `machine-request-builder.ts`, `fetchMachineLogs`, `readNdjsonMessages`, `startLogStream`, `analyzeOutput`, `truncateOutput`, all Fly Machine lifecycle code
+**And** `packages/execution/index.ts` exports are updated to reflect the new module structure
+**And** existing tests for Fly Machine lifecycle are removed and replaced with tests for the new execution service client (using `msw` v2 HTTP handlers to mock the execution service)
+**And** the execution processor tests verify: successful execution → SSE events published, compilation error → `compile_error` SSE event, timeout → `timeout` SSE event, service unavailable → retry via BullMQ
+
+### Story 11.3: Fly Deployment, Cutover & E2E Validation
+
+As a **developer**,
+I want the persistent execution service deployed to Fly.io and the backend worker pointed at it,
+So that the new execution pipeline is live in production with verified end-to-end functionality.
+
+**Acceptance Criteria:**
+
+**Given** the Go execution server (Story 11.1) and backend integration (Story 11.2) are complete
+**When** the deployment and cutover are executed
+**Then** `infra/fly-execution/fly.toml` is configured with: `app = "mcc-execution"`, `primary_region = "sin"`, `internal_port = 8080`, `auto_stop_machines = "off"`, `auto_start_machines = true`, `min_machines_running = 1`, `shared-cpu-4x` with 1024MB RAM
+**And** the execution service is deployed to Fly.io via `flyctl deploy` with `MCC_EXECUTION_SECRET` set as a Fly secret
+**And** the `/health` endpoint returns 200 OK after deployment (verified via `flyctl status` and direct curl)
+**And** `MCC_EXECUTION_URL` and `MCC_EXECUTION_SECRET` environment variables are set on the Railway worker service
+**And** old environment variables are removed from Railway: `MCC_FLY_API_TOKEN`, `MCC_FLY_LOGS_TOKEN`, `MCC_FLY_APP_NAME`
+**And** the updated backend worker is deployed to Railway
+**And** end-to-end validation passes: submit valid Go code → compilation succeeds → stdout displayed in terminal → acceptance criteria evaluated → result stored in database
+**And** end-to-end validation passes for error cases: submit invalid Go code → compilation error displayed in terminal with stderr → no Sentry alert
+**And** submission round-trip latency is <5 seconds (measured from SSE `output` event timestamp minus job creation timestamp)
+**And** stdout capture rate is 100% (non-empty stdout for all compilable submissions)
+**And** existing BullMQ retry behavior works: if execution service is temporarily unavailable, jobs are retried with exponential backoff
+
+### Story 11.4: CI/CD Pipeline & Documentation Cleanup
+
+As a **developer**,
+I want automated deployment for the execution service and updated documentation,
+So that the new architecture is maintained and documented for future development.
+
+**Acceptance Criteria:**
+
+**Given** the persistent execution service is deployed and validated (Story 11.3)
+**When** changes are pushed to `infra/fly-execution/**` on the main branch
+**Then** a GitHub Actions workflow at `.github/workflows/deploy-execution.yml` runs Go tests (`cd infra/fly-execution/server && go test ./...`) and deploys to Fly.io via `flyctl deploy` (using `FLY_API_TOKEN` secret)
+**And** the workflow only triggers on changes to `infra/fly-execution/**` (path filter)
+**And** deployment only proceeds if tests pass
+**And** `project-context.md` is updated: `@mycscompanion/execution` description reflects the new execution service client (not Fly Machine config); `MCC_EXECUTION_URL` and `MCC_EXECUTION_SECRET` replace `MCC_FLY_API_TOKEN` in env var conventions; NFR-S1 note updated to reflect process-level isolation with upgrade path to nsjail
+**And** the existing execution image CI workflow (if any, for the old Fly Machine image) is removed or updated
+**And** no orphaned Fly Machine resources remain (old app cleaned up if separate from new app)

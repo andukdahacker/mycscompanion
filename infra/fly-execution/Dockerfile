@@ -1,8 +1,11 @@
-# Execution environment for compiling and running learner Go code.
-# Single-stage image — the image IS the Go toolchain.
-# Security constraints (network, pids-limit, read-only) are enforced
-# at Fly Machine creation time (Story 3.2), not here.
+# Stage 1: Build the Go execution server
+FROM golang:1.23-alpine AS builder
 
+WORKDIR /build
+COPY server/ .
+RUN go build -o /execution-server .
+
+# Stage 2: Runtime image with Go toolchain (needed for compiling user code)
 FROM golang:1.23-alpine
 
 # Remove unnecessary packages and network utilities.
@@ -18,10 +21,20 @@ RUN ! command -v curl && ! command -v wget && ! command -v git && ! command -v s
 # Create non-root runner user for code execution
 RUN adduser -D -h /home/runner runner
 
-# Create workspace directory for user code injection.
-# Must be writable — benchmarks run user then reference implementation
-# sequentially on the same Machine.
+# Create workspace directory for user code
 RUN mkdir -p /workspace && chown runner:runner /workspace
+
+# Copy the compiled server binary from builder stage
+COPY --from=builder /execution-server /usr/local/bin/execution-server
 
 WORKDIR /workspace
 USER runner
+
+# Pre-warm Go build cache with common stdlib packages (AC9)
+# Runs as runner user so the build cache is in /home/runner/.cache/go-build
+# — the same location used when compiling user code at runtime.
+RUN echo 'package main; import (_ "fmt"; _ "os"; _ "strings"; _ "strconv"; _ "sync"; _ "io"; _ "bufio"; _ "encoding/json"); func main(){}' > /tmp/warm.go \
+ && cd /tmp && go build -o /dev/null warm.go && rm warm.go
+
+EXPOSE 8080
+CMD ["execution-server"]
