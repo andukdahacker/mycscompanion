@@ -45,6 +45,9 @@ func main() {
 	if resp.DurationMs <= 0 {
 		t.Fatal("expected positive duration_ms")
 	}
+	if resp.TimedOut {
+		t.Fatal("expected timed_out false for successful execution")
+	}
 }
 
 func TestExecute_CompilationError(t *testing.T) {
@@ -73,6 +76,9 @@ func main() {
 	if resp.RunDurationMs != 0 {
 		t.Fatalf("expected run_duration_ms 0, got %d", resp.RunDurationMs)
 	}
+	if resp.TimedOut {
+		t.Fatal("expected timed_out false for compilation error")
+	}
 }
 
 func TestExecute_RuntimeTimeout(t *testing.T) {
@@ -99,6 +105,9 @@ func main() {
 	// Build takes ~0.5s, so run should timeout after ~2.5s remaining.
 	if resp.DurationMs < 2000 {
 		t.Fatalf("expected duration >= 2000ms for 3s timeout, got %d", resp.DurationMs)
+	}
+	if !resp.TimedOut {
+		t.Fatal("expected timed_out true for timeout")
 	}
 }
 

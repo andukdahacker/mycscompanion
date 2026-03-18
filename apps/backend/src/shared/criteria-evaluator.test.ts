@@ -12,7 +12,6 @@ function makeExecutionResult(overrides: Partial<ExecutionResult> = {}): Executio
   return {
     exitCode: 0,
     output: '',
-    machineId: 'machine-1',
     durationMs: 1000,
     compilationSucceeded: true,
     ...overrides,

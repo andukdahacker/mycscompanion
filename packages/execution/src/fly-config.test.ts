@@ -1,63 +1,47 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_FLY_MACHINE_CONFIG, getExecutionImageRef } from './fly-config'
-import type { FlyMachineConfig } from './index'
 
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
 })
 
-describe('DEFAULT_FLY_MACHINE_CONFIG', () => {
-  it('should satisfy FlyMachineConfig type with correct values', () => {
-    const config: FlyMachineConfig = DEFAULT_FLY_MACHINE_CONFIG
-    expect(config.image).toBe('registry.fly.io/mcc-execution:latest')
-    expect(config.cpuKind).toBe('shared')
-    expect(config.cpus).toBe(4)
-    expect(config.memoryMb).toBe(1024)
-    expect(config.timeoutSeconds).toBe(120)
-    expect(config.autoDestroy).toBe(false)
-    expect(config.restartPolicy).toBe('no')
+describe('executionServiceConfig', () => {
+  it('should have default timeout of 30 seconds', async () => {
+    const { executionServiceConfig } = await import('./fly-config.js')
+    expect(executionServiceConfig.defaultTimeoutSeconds).toBe(30)
   })
 
-  it('should have cpus >= 1', () => {
-    expect(DEFAULT_FLY_MACHINE_CONFIG.cpus).toBeGreaterThanOrEqual(1)
+  it('should have max timeout of 120 seconds', async () => {
+    const { executionServiceConfig } = await import('./fly-config.js')
+    expect(executionServiceConfig.maxTimeoutSeconds).toBe(120)
   })
 
-  it('should have memoryMb >= 128', () => {
-    expect(DEFAULT_FLY_MACHINE_CONFIG.memoryMb).toBeGreaterThanOrEqual(128)
+  it('should read MCC_EXECUTION_URL from environment', async () => {
+    vi.stubEnv('MCC_EXECUTION_URL', 'https://mcc-execution.fly.dev')
+    // Dynamic import to pick up env var
+    vi.resetModules()
+    const { executionServiceConfig } = await import('./fly-config.js')
+    expect(executionServiceConfig.url).toBe('https://mcc-execution.fly.dev')
   })
 
-  it('should have timeoutSeconds > 0', () => {
-    expect(DEFAULT_FLY_MACHINE_CONFIG.timeoutSeconds).toBeGreaterThan(0)
+  it('should read MCC_EXECUTION_SECRET from environment', async () => {
+    vi.stubEnv('MCC_EXECUTION_SECRET', 'my-secret')
+    vi.resetModules()
+    const { executionServiceConfig } = await import('./fly-config.js')
+    expect(executionServiceConfig.secret).toBe('my-secret')
   })
 
-  it('should use shared CPU kind', () => {
-    expect(DEFAULT_FLY_MACHINE_CONFIG.cpuKind).toBe('shared')
+  it('should default url to empty string when env var missing', async () => {
+    delete process.env.MCC_EXECUTION_URL
+    vi.resetModules()
+    const { executionServiceConfig } = await import('./fly-config.js')
+    expect(executionServiceConfig.url).toBe('')
   })
 
-  it('should auto-destroy machines after completion', () => {
-    expect(DEFAULT_FLY_MACHINE_CONFIG.autoDestroy).toBe(false)
-  })
-
-  it('should not restart machines on failure', () => {
-    expect(DEFAULT_FLY_MACHINE_CONFIG.restartPolicy).toBe('no')
-  })
-
-  it('should reference the Fly registry image', () => {
-    expect(DEFAULT_FLY_MACHINE_CONFIG.image).toMatch(
-      /^registry\.fly\.io\/mcc-execution:/,
-    )
-  })
-})
-
-describe('getExecutionImageRef', () => {
-  it('should return Fly registry URL when env var is not set', () => {
-    delete process.env.MCC_EXECUTION_IMAGE
-    expect(getExecutionImageRef()).toBe('registry.fly.io/mcc-execution:latest')
-  })
-
-  it('should return env var value when MCC_EXECUTION_IMAGE is set', () => {
-    vi.stubEnv('MCC_EXECUTION_IMAGE', 'mcc-execution:local')
-    expect(getExecutionImageRef()).toBe('mcc-execution:local')
+  it('should default secret to empty string when env var missing', async () => {
+    delete process.env.MCC_EXECUTION_SECRET
+    vi.resetModules()
+    const { executionServiceConfig } = await import('./fly-config.js')
+    expect(executionServiceConfig.secret).toBe('')
   })
 })

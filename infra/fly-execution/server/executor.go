@@ -46,6 +46,7 @@ type ExecuteResponse struct {
 	DurationMs      int64     `json:"duration_ms"`
 	BuildDurationMs int64     `json:"build_duration_ms"`
 	RunDurationMs   int64     `json:"run_duration_ms"`
+	TimedOut        bool      `json:"timed_out"`
 	Error           ErrorCode `json:"error,omitempty"`
 }
 
@@ -141,7 +142,8 @@ func Execute(ctx context.Context, req ExecuteRequest, logger *slog.Logger, reque
 		}
 
 		exitCode := 2 // compilation failure
-		if buildCtx.Err() == context.DeadlineExceeded {
+		timedOut := buildCtx.Err() == context.DeadlineExceeded
+		if timedOut {
 			exitCode = 1
 		}
 
@@ -153,6 +155,7 @@ func Execute(ctx context.Context, req ExecuteRequest, logger *slog.Logger, reque
 			"duration_ms", time.Since(start).Milliseconds(),
 			"code_size_bytes", len(decoded),
 			"phase", "build",
+			"timed_out", timedOut,
 		)
 
 		return ExecuteResponse{
@@ -162,6 +165,7 @@ func Execute(ctx context.Context, req ExecuteRequest, logger *slog.Logger, reque
 			DurationMs:      time.Since(start).Milliseconds(),
 			BuildDurationMs: buildDuration,
 			RunDurationMs:   0,
+			TimedOut:        timedOut,
 		}
 	}
 
@@ -199,6 +203,7 @@ func Execute(ctx context.Context, req ExecuteRequest, logger *slog.Logger, reque
 	}
 
 	exitCode := 0
+	timedOut := runCtx.Err() == context.DeadlineExceeded
 	if runErr != nil {
 		if exitErr, ok := runErr.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
@@ -219,6 +224,7 @@ func Execute(ctx context.Context, req ExecuteRequest, logger *slog.Logger, reque
 		"build_duration_ms", buildDuration,
 		"run_duration_ms", runDuration,
 		"code_size_bytes", len(decoded),
+		"timed_out", timedOut,
 	)
 
 	return ExecuteResponse{
@@ -228,6 +234,7 @@ func Execute(ctx context.Context, req ExecuteRequest, logger *slog.Logger, reque
 		DurationMs:      totalDuration,
 		BuildDurationMs: buildDuration,
 		RunDurationMs:   runDuration,
+		TimedOut:        timedOut,
 	}
 }
 

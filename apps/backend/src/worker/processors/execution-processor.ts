@@ -3,11 +3,9 @@ import { join, resolve } from 'node:path'
 import type { Kysely } from 'kysely'
 import type { Logger } from 'pino'
 import type { DB, AcceptanceCriterion, CriterionResult } from '@mycscompanion/shared'
-import type { FlyMachineConfig } from '@mycscompanion/execution'
 import {
-  type FlyClient,
-  FlyApiError,
-  buildMachineRequest,
+  type ExecutionServiceClient,
+  ExecutionServiceError,
   parseBenchmarkOutput,
   classifyBenchmarkError,
 } from '@mycscompanion/execution'
@@ -19,6 +17,8 @@ import type { ContentLoader } from '../../plugins/curriculum/content-loader.js'
 import { evaluateCriteria, evaluateAllNotMet } from '../../shared/criteria-evaluator.js'
 import { persistBenchmarkResult } from '../../shared/benchmark-persistence.js'
 
+const MAX_CODE_SIZE_BYTES = 64 * 1024 // 64KB — defense in depth (Go server also validates)
+
 /** Narrow job interface — only properties actually used by the processor */
 export interface ExecutionJob {
   readonly data: ExecutionJobData
@@ -26,10 +26,7 @@ export interface ExecutionJob {
 
 /** Signature for the benchmark execution function — injectable for testing */
 export type RunBenchmarkFn = (opts: {
-  readonly flyClient: FlyClient
-  readonly flyConfig: FlyMachineConfig
-  readonly flyApiToken: string
-  readonly flyAppName: string
+  readonly executionClient: ExecutionServiceClient
   readonly code: string
   readonly submissionId: string
   readonly milestoneId: string
@@ -42,165 +39,22 @@ export type RunBenchmarkFn = (opts: {
 }) => Promise<string>
 
 export interface ExecutionProcessorDeps {
-  readonly flyClient: FlyClient
-  readonly flyConfig: FlyMachineConfig
+  readonly executionClient: ExecutionServiceClient
   readonly db: Kysely<DB>
   readonly eventPublisher: EventPublisher
   readonly logger: Logger
-  readonly flyApiToken: string
-  /** Personal/org access token for the platform logs API (api.fly.io).
-   *  Falls back to flyApiToken if not provided. */
-  readonly flyLogsToken?: string
-  readonly flyAppName: string
   readonly contentLoader: ContentLoader
+  readonly defaultTimeoutSeconds: number
   readonly runBenchmark?: RunBenchmarkFn
 }
 
-const MAX_OUTPUT_BYTES = 65536
-
-function isLogEntryWithMessage(value: unknown): value is Readonly<{ message: string }> {
-  if (typeof value !== 'object' || value === null || !('message' in value)) return false
-  return typeof value.message === 'string'
-}
-
 /**
- * Read NDJSON log lines from a streaming response body.
- * Extracts the `message` field from each JSON line.
- * Aborts via the provided signal after collecting available data.
+ * Runs a benchmark via the execution service.
+ * Returns stdout for parseBenchmarkOutput to parse.
+ * Returns empty string — benchmark Go image support is a parallel workstream.
  */
-async function readNdjsonMessages(
-  body: ReadableStream<Uint8Array>,
-): Promise<string[]> {
-  const messages: string[] = []
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
-
-      for (const line of lines) {
-        if (!line.trim()) continue
-        try {
-          const entry: unknown = JSON.parse(line)
-          if (isLogEntryWithMessage(entry)) {
-            messages.push(entry.message)
-          }
-        } catch {
-          messages.push(line)
-        }
-      }
-    }
-  } catch {
-    // AbortError expected — return what we have
-  }
-
-  return messages
-}
-
-/**
- * Fetches logs from a stopped Fly Machine via the platform logs API.
- * Requires a personal/org access token (MCC_FLY_LOGS_TOKEN), NOT a
- * Machines API token — those return 401 on api.fly.io.
- *
- * The endpoint streams NDJSON and never closes, so we abort after a timeout.
- */
-async function fetchMachineLogs(
-  appName: string,
-  machineId: string,
-  logsToken: string,
-  logger: Logger,
-): Promise<string[]> {
-  const abortController = new AbortController()
-  const timeout = setTimeout(() => abortController.abort(), 5_000)
-
-  try {
-    const url = `https://api.fly.io/api/v1/apps/${encodeURIComponent(appName)}/logs?instance=${encodeURIComponent(machineId)}`
-
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${logsToken}` },
-      signal: abortController.signal,
-    })
-
-    logger.info({ machineId, status: response.status, ok: response.ok }, 'log_fetch_response')
-
-    if (!response.ok || !response.body) {
-      try {
-        const errBody = await response.text()
-        logger.warn({ machineId, status: response.status, body: errBody.slice(0, 500) }, 'log_fetch_error_body')
-      } catch { /* ignore */ }
-      return []
-    }
-
-    const messages = await readNdjsonMessages(response.body)
-    logger.info({ machineId, messageCount: messages.length }, 'log_fetch_result')
-    return messages
-  } catch (err) {
-    const isAbort = err instanceof Error && err.name === 'AbortError'
-    if (!isAbort) {
-      logger.warn({ machineId, error: err instanceof Error ? err.message : String(err) }, 'log_fetch_failed')
-    }
-    return []
-  } finally {
-    clearTimeout(timeout)
-  }
-}
-
-function analyzeOutput(output: string[], exitCode: number | null): {
-  compilationSucceeded: boolean
-  isUserError: boolean
-  combinedOutput: string
-} {
-  const combinedOutput = output.join('\n')
-  const hasGoErrorPatterns =
-    /\.go:\d+:\d+:/.test(combinedOutput) ||
-    combinedOutput.includes('# command-line-arguments')
-
-  if (exitCode !== null && exitCode !== 0 && hasGoErrorPatterns) {
-    return { compilationSucceeded: false, isUserError: true, combinedOutput }
-  }
-  if (exitCode !== null && exitCode !== 0) {
-    return { compilationSucceeded: true, isUserError: true, combinedOutput }
-  }
-  if (exitCode === null) {
-    // Unknown exit code (machine crash, OOM, API failure) — treat as indeterminate failure
-    // unless output is empty or contains no error indicators
-    if (hasGoErrorPatterns) {
-      return { compilationSucceeded: false, isUserError: true, combinedOutput }
-    }
-    // No exit code and no error patterns: best-effort success if we got output
-    return { compilationSucceeded: true, isUserError: false, combinedOutput }
-  }
-  return { compilationSucceeded: true, isUserError: false, combinedOutput }
-}
-
-function truncateOutput(lines: string[], maxBytes: number): string[] {
-  let totalBytes = 0
-  const result: string[] = []
-  for (const line of lines) {
-    totalBytes += line.length + 1 // +1 for newline
-    if (totalBytes > maxBytes) break
-    result.push(line)
-  }
-  return result
-}
-
-/**
- * Attempts to run a benchmark on the same Fly Machine.
- * Returns the stdout for parseBenchmarkOutput to parse.
- * Returns empty string if the Go image doesn't support --benchmark yet.
- */
-async function runBenchmarkOnMachine(opts: {
-  readonly flyClient: FlyClient
-  readonly flyConfig: FlyMachineConfig
-  readonly flyApiToken: string
-  readonly flyAppName: string
+async function runBenchmarkOnService(opts: {
+  readonly executionClient: ExecutionServiceClient
   readonly code: string
   readonly submissionId: string
   readonly milestoneId: string
@@ -212,12 +66,6 @@ async function runBenchmarkOnMachine(opts: {
   readonly logger: Logger
 }): Promise<string> {
   const { logger } = opts
-  // The Go execution image --benchmark flag is a parallel workstream.
-  // When the image supports it, this function will:
-  // 1. Build a machine request with reference files and --benchmark CLI args
-  // 2. Create the machine and wait for completion
-  // 3. Fetch and return stdout
-  // For now, return empty string — parseBenchmarkOutput handles empty input gracefully.
   logger.info({ submissionId: opts.submissionId, benchmarkName: opts.benchmark.name }, 'benchmark_execution_skipped_go_image_pending')
   return ''
 }
@@ -225,13 +73,11 @@ async function runBenchmarkOnMachine(opts: {
 export function createExecutionProcessor(
   deps: ExecutionProcessorDeps,
 ): (job: ExecutionJob) => Promise<void> {
-  const { flyClient, flyConfig, db, eventPublisher, logger, flyApiToken, flyAppName, contentLoader } = deps
-  const flyLogsToken = deps.flyLogsToken ?? flyApiToken
-  const executeBenchmark = deps.runBenchmark ?? runBenchmarkOnMachine
+  const { executionClient, db, eventPublisher, logger, contentLoader, defaultTimeoutSeconds } = deps
+  const executeBenchmark = deps.runBenchmark ?? runBenchmarkOnService
 
   return async (job: ExecutionJob): Promise<void> => {
     const { submissionId, milestoneId, code, userId } = job.data
-    let machineId: string | undefined
     const startTime = Date.now()
     let sequenceId = 1
 
@@ -272,102 +118,126 @@ export function createExecutionProcessor(
       await eventPublisher.publish(submissionId, {
         type: 'output',
         phase: 'preparing',
-        data: 'Provisioning execution environment...',
+        data: 'Preparing execution environment...',
         sequenceId: sequenceId++,
       })
 
-      // Build machine request and create
-      const request = buildMachineRequest(flyConfig, code, { submissionId, milestoneId })
-      const machine = await flyClient.createMachine(request)
-      const createdMachineId = machine.id
-      machineId = createdMachineId
-      const instanceId = machine.instance_id
-
-      await eventPublisher.publish(submissionId, {
-        type: 'output',
-        phase: 'preparing',
-        data: `Machine created in ${machine.region}`,
-        sequenceId: sequenceId++,
-      })
-
-      // Wait for started
-      await flyClient.waitForState(createdMachineId, 'started', {
-        timeoutSeconds: flyConfig.timeoutSeconds,
-      })
-
-      await eventPublisher.publish(submissionId, {
-        type: 'output',
-        phase: 'compiling',
-        data: 'Compiling and running...',
-        sequenceId: sequenceId++,
-      })
-
-      // Wait for stopped
-      await flyClient.waitForState(createdMachineId, 'stopped', {
-        instanceId,
-        timeoutSeconds: flyConfig.timeoutSeconds,
-      })
-
-      // Fetch logs sequentially AFTER machine stops — avoids connection pool
-      // contention with other Machines API calls on the same origin.
-      const logMessages = await fetchMachineLogs(flyAppName, createdMachineId, flyLogsToken, logger)
-
-      logger.info({ submissionId, machineId: createdMachineId, logLineCount: logMessages.length }, 'log_stream_collected')
-
-      // Try to get exit code from machine details
-      let exitCode: number | null = null
-      try {
-        const machineDetails = await flyClient.getMachine(createdMachineId)
-        const exitEvent = machineDetails.events.find(
-          (e) => e.type === 'exit'
-        )
-        if (exitEvent && 'exit_code' in exitEvent) {
-          exitCode = typeof exitEvent.exit_code === 'number' ? exitEvent.exit_code : null
-        }
-      } catch {
-        // Exit code unavailable — determine from log content only
+      // Validate code size (defense in depth — Go server also validates)
+      const codeBytes = Buffer.byteLength(code, 'utf8')
+      if (codeBytes > MAX_CODE_SIZE_BYTES) {
+        await eventPublisher.publish(submissionId, {
+          type: 'error',
+          phase: 'preparing',
+          message: 'Code exceeds maximum size limit (64KB)',
+          isUserError: true,
+          data: '',
+          sequenceId: sequenceId++,
+        })
+        await db
+          .updateTable('submissions')
+          .set({ status: 'failed', error_message: 'Code exceeds maximum size limit (64KB)', updated_at: new Date() })
+          .where('id', '=', submissionId)
+          .execute()
+        await eventPublisher.setLogTTL(submissionId, 300)
+        return
       }
 
-      // Truncate log output to prevent oversized DB entries
-      const truncatedMessages = truncateOutput(logMessages, MAX_OUTPUT_BYTES)
-      const analysis = analyzeOutput(truncatedMessages, exitCode)
+      // Base64-encode user code and call the execution service
+      const base64Code = Buffer.from(code).toString('base64')
+      const timeoutSeconds = defaultTimeoutSeconds
+      const response = await executionClient.execute({
+        code: base64Code,
+        args: [],
+        timeoutSeconds,
+      })
 
-      logger.info({
-        submissionId,
-        exitCode,
-        isUserError: analysis.isUserError,
-        compilationSucceeded: analysis.compilationSucceeded,
-        outputLength: analysis.combinedOutput.length,
-        outputPreview: analysis.combinedOutput.slice(0, 500),
-      }, 'execution_analysis')
+      const durationMs = Date.now() - startTime
 
-      // Publish output events
-      if (!analysis.compilationSucceeded) {
+      // Check timeout first
+      if (response.timedOut) {
+        // Look up milestone slug for criteria evaluation
+        let timeoutSlug: string | null = null
+        try {
+          const ms = await db.selectFrom('milestones').select('slug').where('id', '=', milestoneId).executeTakeFirst()
+          timeoutSlug = ms?.slug ?? null
+        } catch { /* best-effort */ }
+
+        const timeoutCriteriaJson = await evaluateAndPublishCriteria(timeoutSlug, (criteria) =>
+          evaluateAllNotMet(criteria, 'Execution timed out'),
+        )
+
+        await eventPublisher.publish(submissionId, {
+          type: 'timeout',
+          phase: 'compiling',
+          timeoutSeconds,
+          data: `Execution timed out after ${timeoutSeconds}s`,
+          sequenceId: sequenceId++,
+        })
+
+        const timeoutResult: ExecutionResult = {
+          exitCode: response.exitCode,
+          output: response.stdout,
+          durationMs: Date.now() - startTime,
+          compilationSucceeded: response.exitCode !== 2,
+        }
+
+        await db
+          .updateTable('submissions')
+          .set({
+            status: 'failed',
+            execution_result: JSON.stringify(timeoutResult),
+            error_message: `Execution timed out after ${timeoutSeconds}s`,
+            ...(timeoutCriteriaJson ? { criteria_results: timeoutCriteriaJson } : {}),
+            updated_at: new Date(),
+          })
+          .where('id', '=', submissionId)
+          .execute()
+
+        await eventPublisher.setLogTTL(submissionId, 300)
+        return
+      }
+
+      // Classify result: exitCode === 0 → success, === 2 → compilation error, other → runtime error
+      const isCompilationError = response.exitCode === 2
+      const isSuccess = response.exitCode === 0
+      const isUserError = !isSuccess
+      const compilationSucceeded = !isCompilationError
+
+      // Publish output/error SSE events
+      if (isCompilationError) {
         await eventPublisher.publish(submissionId, {
           type: 'compile_error',
           phase: 'compiling',
-          data: analysis.combinedOutput,
+          data: response.stderr,
           sequenceId: sequenceId++,
         })
-      } else if (analysis.combinedOutput) {
+      } else if (isSuccess) {
         await eventPublisher.publish(submissionId, {
           type: 'output',
           phase: 'compiling',
-          data: analysis.combinedOutput,
+          data: response.stdout,
+          sequenceId: sequenceId++,
+        })
+      } else {
+        // Runtime error (non-zero, non-2 exit code)
+        await eventPublisher.publish(submissionId, {
+          type: 'error',
+          phase: 'compiling',
+          message: 'Runtime error',
+          isUserError: true,
+          data: response.stderr,
           sequenceId: sequenceId++,
         })
       }
 
-      const durationMs = Date.now() - startTime
       const executionResult: ExecutionResult = {
-        exitCode,
-        output: analysis.combinedOutput,
-        machineId: createdMachineId,
+        exitCode: response.exitCode,
+        output: response.stdout,
         durationMs,
-        compilationSucceeded: analysis.compilationSucceeded,
+        compilationSucceeded,
       }
 
-      // Look up milestone slug once — used for benchmark + criteria phases
+      // Look up milestone slug — used for benchmark + criteria phases
       let milestoneSlug: string | null = null
       try {
         const milestone = await db
@@ -382,7 +252,7 @@ export function createExecutionProcessor(
 
       // Benchmark phase — only for successful executions with benchmark config
       let benchmarkRunResult: BenchmarkRunResult | null = null
-      if (!analysis.isUserError && milestoneSlug) {
+      if (!isUserError && milestoneSlug) {
         try {
           const benchmarkConfig = await contentLoader.loadBenchmarkConfig(milestoneSlug)
           if (benchmarkConfig && benchmarkConfig.benchmarks.length > 0) {
@@ -412,11 +282,8 @@ export function createExecutionProcessor(
                   sequenceId: sequenceId++,
                 })
 
-                // Execute benchmark on the same Fly Machine with reference files.
-                // The Go execution image --benchmark flag is a parallel workstream.
-                // When not available, parseBenchmarkOutput returns zeros (empty stdout).
                 const benchmarkStdout = await executeBenchmark({
-                  flyClient, flyConfig, flyApiToken, flyAppName,
+                  executionClient,
                   code, submissionId, milestoneId,
                   referenceMainGo, referenceGoMod,
                   benchmark, warmup, iterations,
@@ -455,35 +322,25 @@ export function createExecutionProcessor(
             }
           }
         } catch (benchErr) {
-          // Benchmark failures should not fail the submission
           const errType = classifyBenchmarkError(benchErr)
           logger.warn({ err: benchErr instanceof Error ? benchErr : new Error(String(benchErr)), submissionId, errorType: errType }, 'benchmark_phase_failed')
         }
       }
 
-      // Evaluate acceptance criteria (with optional benchmark result)
+      // Evaluate acceptance criteria
       const criteriaResultsJson = await evaluateAndPublishCriteria(milestoneSlug, (criteria) =>
-        analysis.isUserError
-          ? evaluateAllNotMet(criteria, analysis.compilationSucceeded ? 'Runtime error' : 'Compilation failed')
+        isUserError
+          ? evaluateAllNotMet(criteria, compilationSucceeded ? 'Runtime error' : 'Compilation failed')
           : evaluateCriteria(criteria, executionResult, benchmarkRunResult),
       )
 
-      if (analysis.isUserError) {
-        await eventPublisher.publish(submissionId, {
-          type: 'error',
-          phase: 'compiling',
-          message: analysis.compilationSucceeded ? 'Runtime error' : 'Compilation failed',
-          isUserError: true,
-          data: analysis.combinedOutput,
-          sequenceId: sequenceId++,
-        })
-
+      if (isUserError) {
         await db
           .updateTable('submissions')
           .set({
             status: 'failed',
             execution_result: JSON.stringify(executionResult),
-            error_message: analysis.compilationSucceeded ? 'Runtime error' : 'Compilation failed',
+            error_message: compilationSucceeded ? 'Runtime error' : 'Compilation failed',
             ...(criteriaResultsJson ? { criteria_results: criteriaResultsJson } : {}),
             updated_at: new Date(),
           })
@@ -511,55 +368,9 @@ export function createExecutionProcessor(
 
       await eventPublisher.setLogTTL(submissionId, 300)
     } catch (err) {
-      // Timeout handling
-      if (
-        err instanceof FlyApiError &&
-        (err.status === 408 || err.status === 504)
-      ) {
-        if (machineId) {
-          try {
-            await flyClient.stopMachine(machineId)
-          } catch {
-            // Best-effort stop
-          }
-        }
-
-        // Evaluate criteria as all not-met for timeout — look up slug since we didn't reach the main path
-        let timeoutSlug: string | null = null
-        try {
-          const ms = await db.selectFrom('milestones').select('slug').where('id', '=', milestoneId).executeTakeFirst()
-          timeoutSlug = ms?.slug ?? null
-        } catch { /* best-effort */ }
-        const timeoutCriteriaJson = await evaluateAndPublishCriteria(timeoutSlug, (criteria) =>
-          evaluateAllNotMet(criteria, 'Execution timed out'),
-        )
-
-        await eventPublisher.publish(submissionId, {
-          type: 'timeout',
-          phase: 'compiling',
-          timeoutSeconds: flyConfig.timeoutSeconds,
-          data: `Execution timed out after ${flyConfig.timeoutSeconds}s`,
-          sequenceId: sequenceId++,
-        })
-
-        await db
-          .updateTable('submissions')
-          .set({
-            status: 'failed',
-            error_message: `Execution timed out after ${flyConfig.timeoutSeconds}s`,
-            ...(timeoutCriteriaJson ? { criteria_results: timeoutCriteriaJson } : {}),
-            updated_at: new Date(),
-          })
-          .where('id', '=', submissionId)
-          .execute()
-
-        await eventPublisher.setLogTTL(submissionId, 300)
-        return
-      }
-
-      // Retryable error — update DB status back to queued and throw for BullMQ retry
-      if (err instanceof FlyApiError && err.isRetryable) {
-        logger.warn({ err, submissionId, machineId }, 'retryable_fly_error')
+      // ExecutionServiceError — retryable (503/429) → reset to queued, re-throw for BullMQ
+      if (err instanceof ExecutionServiceError && err.isRetryable) {
+        logger.warn({ err, submissionId }, 'retryable_execution_service_error')
         try {
           await db
             .updateTable('submissions')
@@ -575,7 +386,7 @@ export function createExecutionProcessor(
 
       // Non-retryable error — mark as failed, don't re-throw
       const errorObj = err instanceof Error ? err : new Error(String(err))
-      logger.error({ err: errorObj, submissionId, machineId }, 'execution_processor_error')
+      logger.error({ err: errorObj, submissionId }, 'execution_processor_error')
 
       await eventPublisher.publish(submissionId, {
         type: 'error',
@@ -597,14 +408,6 @@ export function createExecutionProcessor(
         .execute()
 
       await eventPublisher.setLogTTL(submissionId, 300)
-    } finally {
-      if (machineId) {
-        try {
-          await flyClient.destroyMachine(machineId, true)
-        } catch (destroyErr) {
-          logger.warn({ err: destroyErr, machineId }, 'machine_destroy_failed')
-        }
-      }
     }
   }
 }

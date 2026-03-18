@@ -2,7 +2,7 @@ import { Sentry } from '../instrument.js' // Must be first — Sentry auto-instr
 import pino from 'pino'
 import { Redis } from 'ioredis'
 import { Worker } from 'bullmq'
-import { FlyClient, DEFAULT_FLY_MACHINE_CONFIG, getExecutionImageRef } from '@mycscompanion/execution'
+import { ExecutionServiceClient, executionServiceConfig } from '@mycscompanion/execution'
 import { db, destroyDb } from '../shared/db.js'
 import { createBullMQConnection, EXECUTION_QUEUE_NAME, EXPORT_QUEUE_NAME } from '../shared/queue.js'
 import { createEventPublisher } from '../shared/event-publisher.js'
@@ -19,15 +19,15 @@ const logger = pino({
 })
 
 // Validate required env vars
-if (!process.env['MCC_FLY_API_TOKEN']) {
-  throw new Error('MCC_FLY_API_TOKEN environment variable is required')
+if (!process.env['MCC_EXECUTION_URL']) {
+  throw new Error('MCC_EXECUTION_URL environment variable is required')
+}
+if (!process.env['MCC_EXECUTION_SECRET']) {
+  throw new Error('MCC_EXECUTION_SECRET environment variable is required')
 }
 
-const flyApiToken = process.env['MCC_FLY_API_TOKEN']
-const flyAppName = process.env['MCC_FLY_APP_NAME'] ?? 'mcc-execution'
-// Platform logs API (api.fly.io) requires a personal/org access token, not a Machines API token.
-// Set MCC_FLY_LOGS_TOKEN via `fly auth token` output. Falls back to MCC_FLY_API_TOKEN.
-const flyLogsToken = process.env['MCC_FLY_LOGS_TOKEN'] ?? flyApiToken
+const executionUrl = process.env['MCC_EXECUTION_URL']
+const executionSecret = process.env['MCC_EXECUTION_SECRET']
 
 const redisUrl = process.env['REDIS_URL']
 if (!redisUrl) throw new Error('REDIS_URL environment variable is required')
@@ -40,14 +40,8 @@ bullmqConnection.on('error', (err) => { logger.error(err, 'BullMQ connection err
 const redis = new Redis(redisUrl)
 redis.on('error', (err) => { logger.error(err, 'Redis connection error') })
 
-// Create Fly client
-const flyClient = new FlyClient({ apiToken: flyApiToken, appName: flyAppName })
-
-// Build runtime config with current execution image
-const flyConfig = {
-  ...DEFAULT_FLY_MACHINE_CONFIG,
-  image: getExecutionImageRef(),
-}
+// Create execution service client
+const executionClient = new ExecutionServiceClient(executionUrl, executionSecret)
 
 // Create event publisher
 const eventPublisher = createEventPublisher(redis)
@@ -57,15 +51,12 @@ const contentLoader = createContentLoader({ redis })
 
 // Create execution processor
 const processor = createExecutionProcessor({
-  flyClient,
-  flyConfig,
+  executionClient,
   db,
   eventPublisher,
   logger,
-  flyApiToken,
-  flyLogsToken,
-  flyAppName,
   contentLoader,
+  defaultTimeoutSeconds: executionServiceConfig.defaultTimeoutSeconds,
 })
 
 // Create BullMQ Worker

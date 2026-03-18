@@ -1,19 +1,21 @@
-import type { FlyMachineConfig } from './index.js'
+/**
+ * Execution service configuration.
+ * Reads URL and secret from environment variables.
+ */
 
-const FLY_REGISTRY_IMAGE = 'registry.fly.io/mcc-execution:latest' as const
+const DEFAULT_TIMEOUT_SECONDS = 30
+const MAX_TIMEOUT_SECONDS = 120
 
-/** Reads MCC_EXECUTION_IMAGE env var with fallback to Fly registry.
- *  Local dev: set MCC_EXECUTION_IMAGE=mcc-execution:local */
-export const getExecutionImageRef = (): string =>
-  process.env.MCC_EXECUTION_IMAGE ?? FLY_REGISTRY_IMAGE
+export type ExecutionServiceConfig = Readonly<{
+  url: string
+  secret: string
+  defaultTimeoutSeconds: number
+  maxTimeoutSeconds: number
+}>
 
-export const DEFAULT_FLY_MACHINE_CONFIG = {
-  image: FLY_REGISTRY_IMAGE,
-  cpuKind: 'shared',
-  cpus: 4,
-  memoryMb: 1024,
-  timeoutSeconds: 120,
-  region: 'sin',
-  autoDestroy: false,
-  restartPolicy: 'no',
-} as const satisfies FlyMachineConfig
+export const executionServiceConfig: ExecutionServiceConfig = {
+  url: process.env.MCC_EXECUTION_URL ?? '',
+  secret: process.env.MCC_EXECUTION_SECRET ?? '',
+  defaultTimeoutSeconds: DEFAULT_TIMEOUT_SECONDS,
+  maxTimeoutSeconds: MAX_TIMEOUT_SECONDS,
+}
