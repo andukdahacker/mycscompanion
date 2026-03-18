@@ -158,5 +158,5 @@ development_status:
   11-2-backend-integration-and-execution-processor-rewrite: done
   11-3-fly-deployment-cutover-and-e2e-validation: done
   11-4-ci-cd-pipeline-and-documentation-cleanup: done
-  11-5-wire-command-args-to-execution-service: ready-for-dev
+  11-5-wire-command-args-to-execution-service: done
   epic-11-retrospective: optional

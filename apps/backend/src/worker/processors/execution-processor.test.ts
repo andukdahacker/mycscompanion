@@ -64,6 +64,19 @@ function createTestJob(overrides: Partial<ExecutionJobData> = {}): ExecutionJob 
   }
 }
 
+async function seedMilestone(milestoneId: string = 'ms-1') {
+  await db
+    .insertInto('tracks')
+    .values({ id: 'track-1', name: 'Test Track', slug: 'test-track' })
+    .onConflict((oc) => oc.column('id').doNothing())
+    .execute()
+  await db
+    .insertInto('milestones')
+    .values({ id: milestoneId, track_id: 'track-1', slug: '01-kv-store', title: 'KV Store', position: 1 })
+    .onConflict((oc) => oc.column('id').doNothing())
+    .execute()
+}
+
 async function seedUserAndSubmission(submissionId: string = TEST_SUBMISSION_ID) {
   await db
     .insertInto('users')
@@ -90,6 +103,8 @@ afterEach(async () => {
   await db.deleteFrom('benchmark_results').where('user_id', '=', TEST_UID).execute()
   await db.deleteFrom('submissions').where('user_id', '=', TEST_UID).execute()
   await db.deleteFrom('users').where('id', '=', TEST_UID).execute()
+  await db.deleteFrom('milestones').where('id', '=', 'ms-1').execute()
+  await db.deleteFrom('tracks').where('id', '=', 'track-1').execute()
   vi.restoreAllMocks()
 })
 
@@ -281,17 +296,91 @@ describe('ExecutionProcessor', () => {
     expect(errorEvent![1].isUserError).toBe(false)
   })
 
+  it('should pass commandArgs to execution service when criteria have commandArgs', async () => {
+    await seedMilestone()
+    await seedUserAndSubmission()
+
+    const executionClient = createMockExecutionClient({ stdout: 'PASS\n', exitCode: 0 })
+    const eventPublisher = createMockEventPublisher()
+    const contentLoader = createMockContentLoader()
+    ;(contentLoader.loadAcceptanceCriteria as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { name: 'put-and-get', order: 1, assertion: { type: 'stdout-contains', expected: 'PASS', commandArgs: 'test' } },
+    ])
+
+    const processor = createExecutionProcessor({
+      executionClient,
+      db,
+      eventPublisher,
+      logger,
+      contentLoader,
+      defaultTimeoutSeconds: 30,
+    })
+
+    await processor(createTestJob())
+
+    const executeMock = executionClient.execute as ReturnType<typeof vi.fn>
+    expect(executeMock).toHaveBeenCalledTimes(1)
+    const callArgs = executeMock.mock.calls[0]![0] as { code: string; args: string[]; timeoutSeconds: number }
+    expect(callArgs.args).toEqual(['test'])
+  })
+
+  it('should pass empty args when criteria have no commandArgs', async () => {
+    await seedMilestone()
+    await seedUserAndSubmission()
+
+    const executionClient = createMockExecutionClient({ stdout: 'ok\n', exitCode: 0 })
+    const eventPublisher = createMockEventPublisher()
+    const contentLoader = createMockContentLoader()
+    ;(contentLoader.loadAcceptanceCriteria as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { name: 'put-and-get', order: 1, assertion: { type: 'stdout-contains', expected: 'ok' } },
+    ])
+
+    const processor = createExecutionProcessor({
+      executionClient,
+      db,
+      eventPublisher,
+      logger,
+      contentLoader,
+      defaultTimeoutSeconds: 30,
+    })
+
+    await processor(createTestJob())
+
+    const executeMock = executionClient.execute as ReturnType<typeof vi.fn>
+    const callArgs = executeMock.mock.calls[0]![0] as { code: string; args: string[]; timeoutSeconds: number }
+    expect(callArgs.args).toEqual([])
+  })
+
+  it('should load criteria before calling execution service', async () => {
+    await seedMilestone()
+    await seedUserAndSubmission()
+
+    const executionClient = createMockExecutionClient({ stdout: 'ok\n', exitCode: 0 })
+    const eventPublisher = createMockEventPublisher()
+    const contentLoader = createMockContentLoader()
+    ;(contentLoader.loadAcceptanceCriteria as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { name: 'put-and-get', order: 1, assertion: { type: 'stdout-contains', expected: 'ok', commandArgs: 'test' } },
+    ])
+
+    const processor = createExecutionProcessor({
+      executionClient,
+      db,
+      eventPublisher,
+      logger,
+      contentLoader,
+      defaultTimeoutSeconds: 30,
+    })
+
+    await processor(createTestJob())
+
+    // Verify criteria loading happened before execution using invocation call order
+    const loadOrder = (contentLoader.loadAcceptanceCriteria as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    const executeOrder = (executionClient.execute as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    expect(loadOrder).toBeLessThan(executeOrder!)
+  })
+
   it('should evaluate criteria with stdout from response', async () => {
-    await db
-      .insertInto('tracks')
-      .values({ id: 'track-1', name: 'Test Track', slug: 'test-track' })
-      .onConflict((oc) => oc.column('id').doNothing())
-      .execute()
-    await db
-      .insertInto('milestones')
-      .values({ id: 'ms-1', track_id: 'track-1', slug: '01-kv-store', title: 'KV Store', position: 1 })
-      .onConflict((oc) => oc.column('id').doNothing())
-      .execute()
+    await seedMilestone()
     await seedUserAndSubmission()
 
     const executionClient = createMockExecutionClient({ stdout: 'Hello, World!\n', exitCode: 0 })
@@ -316,22 +405,10 @@ describe('ExecutionProcessor', () => {
     const criteriaEvent = publishCalls.find((call) => call[1].type === 'criteria_results')
     expect(criteriaEvent).toBeDefined()
     expect(criteriaEvent![1].results![0]!.status).toBe('met')
-
-    await db.deleteFrom('milestones').where('id', '=', 'ms-1').execute()
-    await db.deleteFrom('tracks').where('id', '=', 'track-1').execute()
   })
 
   it('should use ExecutionServiceClient.execute() for benchmark execution', async () => {
-    await db
-      .insertInto('tracks')
-      .values({ id: 'track-1', name: 'Test Track', slug: 'test-track' })
-      .onConflict((oc) => oc.column('id').doNothing())
-      .execute()
-    await db
-      .insertInto('milestones')
-      .values({ id: 'ms-1', track_id: 'track-1', slug: '01-kv-store', title: 'KV Store', position: 1 })
-      .onConflict((oc) => oc.column('id').doNothing())
-      .execute()
+    await seedMilestone()
     await seedUserAndSubmission()
 
     const BENCHMARK_STDOUT = [
@@ -373,10 +450,6 @@ describe('ExecutionProcessor', () => {
     expect(runBenchmark).toHaveBeenCalledTimes(1)
     const benchmarkCall = (runBenchmark as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { executionClient: ExecutionServiceClient }
     expect(benchmarkCall.executionClient).toBe(executionClient)
-
-    await db.deleteFrom('benchmark_results').where('user_id', '=', TEST_UID).execute()
-    await db.deleteFrom('milestones').where('id', '=', 'ms-1').execute()
-    await db.deleteFrom('tracks').where('id', '=', 'track-1').execute()
   })
 
   it('should update DB submission with correct execution_result JSON (no machineId)', async () => {

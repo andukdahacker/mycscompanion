@@ -81,15 +81,12 @@ export function createExecutionProcessor(
     const startTime = Date.now()
     let sequenceId = 1
 
-    /** Shared helper: load criteria by slug → evaluate → publish SSE → return JSON string */
+    /** Shared helper: evaluate pre-loaded criteria → publish SSE → return JSON string */
     async function evaluateAndPublishCriteria(
-      slug: string | null,
+      criteria: ReadonlyArray<AcceptanceCriterion>,
       evaluateFn: (criteria: ReadonlyArray<AcceptanceCriterion>) => ReadonlyArray<CriterionResult>,
     ): Promise<string | null> {
       try {
-        if (!slug) return null
-
-        const criteria = await contentLoader.loadAcceptanceCriteria(slug)
         if (criteria.length === 0) return null
 
         const criteriaResults = evaluateFn(criteria)
@@ -142,12 +139,42 @@ export function createExecutionProcessor(
         return
       }
 
+      // Look up milestone slug — needed for criteria loading, benchmark, and evaluation
+      let milestoneSlug: string | null = null
+      try {
+        const milestone = await db
+          .selectFrom('milestones')
+          .select('slug')
+          .where('id', '=', milestoneId)
+          .executeTakeFirst()
+        milestoneSlug = milestone?.slug ?? null
+      } catch {
+        // milestone lookup failed — skip criteria/benchmark phases that need slug
+      }
+
+      // Load acceptance criteria before execution to extract commandArgs
+      let preloadedCriteria: ReadonlyArray<AcceptanceCriterion> = []
+      let commandArgs: string | undefined
+      if (milestoneSlug) {
+        try {
+          preloadedCriteria = await contentLoader.loadAcceptanceCriteria(milestoneSlug)
+          const distinctArgs = new Set(preloadedCriteria.map((c) => c.assertion.commandArgs).filter(Boolean))
+          if (distinctArgs.size > 1) {
+            logger.warn({ submissionId, milestoneSlug, commandArgs: [...distinctArgs] }, 'multiple_distinct_commandArgs_in_criteria')
+          }
+          const firstWithArgs = preloadedCriteria.find((c) => c.assertion.commandArgs)
+          commandArgs = firstWithArgs?.assertion.commandArgs
+        } catch (criteriaErr) {
+          logger.warn({ err: criteriaErr instanceof Error ? criteriaErr : new Error(String(criteriaErr)), submissionId }, 'criteria_preload_failed')
+        }
+      }
+
       // Base64-encode user code and call the execution service
       const base64Code = Buffer.from(code).toString('base64')
       const timeoutSeconds = defaultTimeoutSeconds
       const response = await executionClient.execute({
         code: base64Code,
-        args: [],
+        args: commandArgs ? [commandArgs] : [],
         timeoutSeconds,
       })
 
@@ -155,14 +182,7 @@ export function createExecutionProcessor(
 
       // Check timeout first
       if (response.timedOut) {
-        // Look up milestone slug for criteria evaluation
-        let timeoutSlug: string | null = null
-        try {
-          const ms = await db.selectFrom('milestones').select('slug').where('id', '=', milestoneId).executeTakeFirst()
-          timeoutSlug = ms?.slug ?? null
-        } catch { /* best-effort */ }
-
-        const timeoutCriteriaJson = await evaluateAndPublishCriteria(timeoutSlug, (criteria) =>
+        const timeoutCriteriaJson = await evaluateAndPublishCriteria(preloadedCriteria, (criteria) =>
           evaluateAllNotMet(criteria, 'Execution timed out'),
         )
 
@@ -235,19 +255,6 @@ export function createExecutionProcessor(
         output: response.stdout,
         durationMs,
         compilationSucceeded,
-      }
-
-      // Look up milestone slug — used for benchmark + criteria phases
-      let milestoneSlug: string | null = null
-      try {
-        const milestone = await db
-          .selectFrom('milestones')
-          .select('slug')
-          .where('id', '=', milestoneId)
-          .executeTakeFirst()
-        milestoneSlug = milestone?.slug ?? null
-      } catch {
-        // milestone lookup failed — skip benchmark and criteria phases that need slug
       }
 
       // Benchmark phase — only for successful executions with benchmark config
@@ -327,8 +334,8 @@ export function createExecutionProcessor(
         }
       }
 
-      // Evaluate acceptance criteria
-      const criteriaResultsJson = await evaluateAndPublishCriteria(milestoneSlug, (criteria) =>
+      // Evaluate acceptance criteria (using pre-loaded criteria)
+      const criteriaResultsJson = await evaluateAndPublishCriteria(preloadedCriteria, (criteria) =>
         isUserError
           ? evaluateAllNotMet(criteria, compilationSucceeded ? 'Runtime error' : 'Compilation failed')
           : evaluateCriteria(criteria, executionResult, benchmarkRunResult),
