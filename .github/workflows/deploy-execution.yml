@@ -1,0 +1,53 @@
+# REQUIRED REPOSITORY SECRETS:
+# ==============================
+# - FLY_API_TOKEN: Fly.io API token for deployment authentication
+#   Generate at: https://fly.io/dashboard → Tokens → Create Token
+
+name: Deploy Execution Service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/fly-execution/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/fly-execution/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'infra/fly-execution/server/go.mod'
+
+      - name: Run Go tests
+        run: cd infra/fly-execution/server && go test -v ./...
+
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [test]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@1.5
+
+      - name: Deploy to Fly.io
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: cd infra/fly-execution && flyctl deploy --app mcc-execution

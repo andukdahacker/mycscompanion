@@ -1,6 +1,6 @@
 # Story 11.3: Fly Deployment, Cutover & E2E Validation
 
-Status: in-progress
+Status: done
 
 ## Story
 
@@ -115,7 +115,7 @@ so that the new execution pipeline is live in production with verified end-to-en
   - [x] 9.1 Run `turbo typecheck` — verify no type errors
   - [x] 9.2 Run `turbo lint` — verify no lint issues
   - [x] 9.3 Run `turbo test` — verify no test failures (especially that integration test skip condition still works)
-  - [ ] 9.4 Verify CI passes on the commit with all code changes
+  - [x] 9.4 Verify CI passes on the commit with all code changes
 
 ## Dev Notes
 
