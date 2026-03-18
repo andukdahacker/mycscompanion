@@ -129,30 +129,35 @@ This runs all 3 apps concurrently:
 
 | Variable | When needed | Purpose |
 |---|---|---|
-| `MCC_FLY_API_TOKEN` | Testing code execution | Fly.io API for ephemeral VMs |
-| `MCC_FLY_APP_NAME` | Testing code execution | Fly.io app name (default: `mcc-execution`) |
-| `MCC_EXECUTION_IMAGE` | Testing code execution | Docker image for Go sandbox |
+| `MCC_EXECUTION_URL` | Testing code execution | Persistent execution service URL (default: `https://mcc-execution.fly.dev`) |
+| `MCC_EXECUTION_SECRET` | Testing code execution | Shared secret for execution service Bearer auth |
 | `MCC_SENTRY_DSN` | First production deploy | Error tracking (auto-disabled in dev) |
 | `MCC_ADMIN_PASSWORD` | When you need queue UI | Bull Board auth |
 | `ANTHROPIC_API_KEY` | Epic 6 (Tutor) | AI tutor — not yet implemented |
 
 ## Deferred Service Setup
 
-### Fly.io (code execution — Epic 3 worker)
+### Execution Service (code execution)
 
 Set this up when you need to test the full submission → execution → results flow. The API server runs fine without it.
 
-1. Create account at https://fly.io
-2. Install CLI: `curl -L https://fly.io/install.sh | sh`
-3. Log in: `fly auth login`
-4. Create execution app: `fly apps create mcc-execution`
-5. Get API token: `fly tokens create deploy -x 999999h`
-6. Build local execution image: `docker compose --profile execution build`
-7. Set in `.env`:
+**Option A: Use the deployed service (recommended)**
+
+1. Use the same value as the Fly.io `MCC_EXECUTION_SECRET` secret
+2. Set in `.env`:
    ```
-   MCC_FLY_API_TOKEN=fo1_xxxxx
-   MCC_FLY_APP_NAME=mcc-execution
-   MCC_EXECUTION_IMAGE=mcc-execution:local
+   MCC_EXECUTION_URL=https://mcc-execution.fly.dev
+   MCC_EXECUTION_SECRET=<secret>
+   ```
+
+**Option B: Run locally via Docker**
+
+1. Build the execution image: `docker compose --profile execution build`
+2. Run locally: `docker run -p 8080:8080 -e MCC_EXECUTION_SECRET=dev-secret mcc-execution:local`
+3. Set in `.env`:
+   ```
+   MCC_EXECUTION_URL=http://localhost:8080
+   MCC_EXECUTION_SECRET=dev-secret
    ```
 
 ### Sentry (error tracking — before production)

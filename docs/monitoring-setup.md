@@ -115,7 +115,7 @@ Bull Board (`@bull-board/api@^6.20.3`) provides a web UI for monitoring and mana
 
 | Symptom | Likely Cause | Action |
 |---|---|---|
-| Queue shows many failed jobs | Worker errors or Fly.io machine unavailability | Check worker logs in Railway, check Fly.io machine availability |
+| Queue shows many failed jobs | Worker errors or execution service unavailability | Check worker logs in Railway, check execution service health (`curl https://mcc-execution.fly.dev/health`) |
 | Jobs stuck in waiting | Worker service not running or Redis connectivity issues | Verify worker service is running in Railway, check Redis connectivity |
 | Jobs stuck in active | Possible worker crash; jobs will be moved to failed after stall timeout (default: 30s) | Check worker logs for crashes, jobs will auto-recover via stall timeout |
 

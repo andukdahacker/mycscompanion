@@ -13,7 +13,7 @@ import { createEventPublisher } from '../../../shared/event-publisher.js'
 const TEST_UID = 'test-integration-uid'
 const mockAuth = createMockFirebaseAuth(TEST_UID)
 
-describe.skipIf(!process.env['MCC_FLY_API_TOKEN'])(
+describe.skipIf(!process.env['MCC_EXECUTION_URL'])(
   'Integration: Submission → SSE stream round-trip',
   () => {
     let submissionId: string | undefined

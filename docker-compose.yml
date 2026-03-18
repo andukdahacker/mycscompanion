@@ -18,6 +18,10 @@ services:
   execution:
     build: ./infra/fly-execution
     image: mcc-execution:local
+    ports:
+      - "8080:8080"
+    environment:
+      MCC_EXECUTION_SECRET: ${MCC_EXECUTION_SECRET:-dev-secret}
     profiles:
       - execution
 

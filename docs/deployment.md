@@ -49,7 +49,8 @@ Railway services are created via the Railway dashboard, not config files. The `r
 | `REDIS_URL` | Yes | Same as api |
 | `MCC_SENTRY_DSN` | Yes | Same as api |
 | `NODE_ENV` | Yes | Set to `production` |
-| `MCC_FLY_API_TOKEN` | Yes | Fly.io API token for code execution (Story 3.2) |
+| `MCC_EXECUTION_URL` | Yes | Persistent execution service URL (e.g., `https://mcc-execution.fly.dev`) |
+| `MCC_EXECUTION_SECRET` | Yes | Shared secret for execution service Bearer auth |
 | `ANTHROPIC_API_KEY` | Yes | Anthropic API key for AI tutor (Story 6.1) |
 
 ### webapp
