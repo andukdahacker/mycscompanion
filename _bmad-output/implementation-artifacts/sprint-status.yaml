@@ -159,4 +159,5 @@ development_status:
   11-3-fly-deployment-cutover-and-e2e-validation: done
   11-4-ci-cd-pipeline-and-documentation-cleanup: done
   11-5-wire-command-args-to-execution-service: done
+  11-6-benchmark-execution-in-go-server: done
   epic-11-retrospective: optional

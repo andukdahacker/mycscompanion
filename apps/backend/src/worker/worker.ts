@@ -6,7 +6,7 @@ import { ExecutionServiceClient, executionServiceConfig } from '@mycscompanion/e
 import { db, destroyDb } from '../shared/db.js'
 import { createBullMQConnection, EXECUTION_QUEUE_NAME, EXPORT_QUEUE_NAME } from '../shared/queue.js'
 import { createEventPublisher } from '../shared/event-publisher.js'
-import { createExecutionProcessor } from './processors/execution-processor.js'
+import { createExecutionProcessor, runBenchmarkOnService } from './processors/execution-processor.js'
 import { createExportProcessor } from './processors/export-processor.js'
 import { createContentLoader } from '../plugins/curriculum/content-loader.js'
 
@@ -57,6 +57,7 @@ const processor = createExecutionProcessor({
   logger,
   contentLoader,
   defaultTimeoutSeconds: executionServiceConfig.defaultTimeoutSeconds,
+  runBenchmark: runBenchmarkOnService,
 })
 
 // Create BullMQ Worker

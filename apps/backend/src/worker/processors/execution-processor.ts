@@ -49,11 +49,13 @@ export interface ExecutionProcessorDeps {
 }
 
 /**
- * Runs a benchmark via the execution service.
- * Returns stdout for parseBenchmarkOutput to parse.
- * Returns empty string — benchmark Go image support is a parallel workstream.
+ * Runs a benchmark via the execution service by generating a self-contained
+ * Go harness program that embeds both user and reference code, compiles and
+ * runs them in isolated tempdirs, and outputs structured JSON to stdout.
+ *
+ * Returns stdout for parseBenchmarkOutput() to parse.
  */
-async function runBenchmarkOnService(opts: {
+export async function runBenchmarkOnService(opts: {
   readonly executionClient: ExecutionServiceClient
   readonly code: string
   readonly submissionId: string
@@ -65,9 +67,262 @@ async function runBenchmarkOnService(opts: {
   readonly iterations: number
   readonly logger: Logger
 }): Promise<string> {
-  const { logger } = opts
-  logger.info({ submissionId: opts.submissionId, benchmarkName: opts.benchmark.name }, 'benchmark_execution_skipped_go_image_pending')
-  return ''
+  const { executionClient, code, referenceMainGo, referenceGoMod, benchmark, warmup, iterations, logger } = opts
+
+  const numOps = benchmark.workload?.numOperations ?? 1000
+  const keySize = benchmark.workload?.keySizeBytes ?? 16
+  const valueSize = benchmark.workload?.valueSizeBytes ?? 64
+
+  // Escape backticks and backslashes in embedded Go source for string literals
+  const escapeGoString = (s: string): string => s.replace(/\\/g, '\\\\').replace(/`/g, '` + "`" + `')
+
+  const escapedUserCode = escapeGoString(code)
+  const escapedRefCode = escapeGoString(referenceMainGo)
+  const escapedRefGoMod = escapeGoString(referenceGoMod)
+
+  const harnessCode = `package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"math"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+)
+
+const userCode = ` + '`' + escapedUserCode + '`' + `
+const refCode = ` + '`' + escapedRefCode + '`' + `
+const refGoMod = ` + '`' + escapedRefGoMod + '`' + `
+
+const warmupIterations = ${warmup}
+const measuredIterations = ${iterations}
+const numOps = ${numOps}
+const keySize = ${keySize}
+const valueSize = ${valueSize}
+
+type iterationResult struct {
+	Type       string  ` + '`json:"type"`' + `
+	Target     string  ` + '`json:"target"`' + `
+	Iteration  int     ` + '`json:"iteration"`' + `
+	Total      int     ` + '`json:"total"`' + `
+	OpsPerSec  float64 ` + '`json:"ops_per_sec"`' + `
+	P50Us      float64 ` + '`json:"p50_latency_us"`' + `
+	P99Us      float64 ` + '`json:"p99_latency_us"`' + `
+}
+
+type benchmarkComplete struct {
+	Type             string  ` + '`json:"type"`' + `
+	UserMedianOps    float64 ` + '`json:"user_median_ops"`' + `
+	RefMedianOps     float64 ` + '`json:"reference_median_ops"`' + `
+	NormalizedRatio  float64 ` + '`json:"normalized_ratio"`' + `
+	UserP50Us        float64 ` + '`json:"user_p50_us"`' + `
+	UserP99Us        float64 ` + '`json:"user_p99_us"`' + `
+	RefP50Us         float64 ` + '`json:"ref_p50_us"`' + `
+	RefP99Us         float64 ` + '`json:"ref_p99_us"`' + `
+}
+
+func main() {
+	userDir, err := os.MkdirTemp("", "bench-user-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create user tmpdir: %v\\n", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(userDir)
+
+	refDir, err := os.MkdirTemp("", "bench-ref-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create ref tmpdir: %v\\n", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(refDir)
+
+	// Write user code
+	if err := os.WriteFile(filepath.Join(userDir, "main.go"), []byte(userCode), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to write user main.go: %v\\n", err)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(filepath.Join(userDir, "go.mod"), []byte(refGoMod), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to write user go.mod: %v\\n", err)
+		os.Exit(1)
+	}
+
+	// Write reference code
+	if err := os.WriteFile(filepath.Join(refDir, "main.go"), []byte(refCode), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to write ref main.go: %v\\n", err)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(filepath.Join(refDir, "go.mod"), []byte(refGoMod), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to write ref go.mod: %v\\n", err)
+		os.Exit(1)
+	}
+
+	// Compile both
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	userBin := filepath.Join(userDir, "main")
+	refBin := filepath.Join(refDir, "main")
+
+	buildUser := exec.CommandContext(ctx, "go", "build", "-o", userBin, ".")
+	buildUser.Dir = userDir
+	if out, err := buildUser.CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "user compilation failed: %s\\n%s", err, string(out))
+		os.Exit(1)
+	}
+	buildRef := exec.CommandContext(ctx, "go", "build", "-o", refBin, ".")
+	buildRef.Dir = refDir
+	if out, err := buildRef.CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "reference compilation failed: %s\\n%s", err, string(out))
+		os.Exit(1)
+	}
+
+	args := fmt.Sprintf("benchmark --ops=%d --key-size=%d --value-size=%d", numOps, keySize, valueSize)
+	benchArgs := strings.Fields(args)
+
+	// Warmup — discard output
+	for w := 0; w < warmupIterations; w++ {
+		runBinary(ctx, userBin, benchArgs)
+		runBinary(ctx, refBin, benchArgs)
+	}
+
+	// Measured iterations
+	totalIters := warmupIterations + measuredIterations
+	var userOps []float64
+	var refOps []float64
+	var userP50s, userP99s, refP50s, refP99s []float64
+
+	for i := 0; i < measuredIterations; i++ {
+		iterNum := i + 1
+
+		// Run user
+		userOut := runBinary(ctx, userBin, benchArgs)
+		userResult := parseIterationLine(userOut)
+		if userResult != nil {
+			userOps = append(userOps, userResult.OpsPerSec)
+			userP50s = append(userP50s, userResult.P50Us)
+			userP99s = append(userP99s, userResult.P99Us)
+			line := iterationResult{
+				Type: "benchmark_iteration", Target: "user",
+				Iteration: iterNum, Total: totalIters,
+				OpsPerSec: userResult.OpsPerSec, P50Us: userResult.P50Us, P99Us: userResult.P99Us,
+			}
+			b, _ := json.Marshal(line)
+			fmt.Println(string(b))
+		}
+
+		// Run reference
+		refOut := runBinary(ctx, refBin, benchArgs)
+		refResult := parseIterationLine(refOut)
+		if refResult != nil {
+			refOps = append(refOps, refResult.OpsPerSec)
+			refP50s = append(refP50s, refResult.P50Us)
+			refP99s = append(refP99s, refResult.P99Us)
+			line := iterationResult{
+				Type: "benchmark_iteration", Target: "reference",
+				Iteration: iterNum, Total: totalIters,
+				OpsPerSec: refResult.OpsPerSec, P50Us: refResult.P50Us, P99Us: refResult.P99Us,
+			}
+			b, _ := json.Marshal(line)
+			fmt.Println(string(b))
+		}
+	}
+
+	// Compute summary
+	userMedian := median(userOps)
+	refMedian := median(refOps)
+	ratio := 0.0
+	if refMedian > 0 {
+		ratio = math.Round(userMedian/refMedian*10000) / 10000
+	}
+
+	complete := benchmarkComplete{
+		Type: "benchmark_complete",
+		UserMedianOps: math.Round(userMedian*100) / 100,
+		RefMedianOps: math.Round(refMedian*100) / 100,
+		NormalizedRatio: ratio,
+		UserP50Us: math.Round(median(userP50s)*100) / 100,
+		UserP99Us: math.Round(median(userP99s)*100) / 100,
+		RefP50Us: math.Round(median(refP50s)*100) / 100,
+		RefP99Us: math.Round(median(refP99s)*100) / 100,
+	}
+	b, _ := json.Marshal(complete)
+	fmt.Println(string(b))
+}
+
+func runBinary(ctx context.Context, binPath string, args []string) string {
+	cmd := exec.CommandContext(ctx, binPath, args...)
+	cmd.Dir = filepath.Dir(binPath)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func parseIterationLine(output string) *iterationResult {
+	if output == "" {
+		return nil
+	}
+	var result iterationResult
+	for _, line := range strings.Split(output, "\\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if err := json.Unmarshal([]byte(line), &result); err == nil && result.Type == "benchmark_iteration" {
+			return &result
+		}
+	}
+	return nil
+}
+
+func median(vals []float64) float64 {
+	if len(vals) == 0 {
+		return 0
+	}
+	sorted := make([]float64, len(vals))
+	copy(sorted, vals)
+	sort.Float64s(sorted)
+	mid := len(sorted) / 2
+	if len(sorted)%2 == 0 {
+		return (sorted[mid-1] + sorted[mid]) / 2
+	}
+	return sorted[mid]
+}
+`
+
+  // Estimate timeout: warmup + measured iterations, each running 2 binaries
+  // Allow ~30s per binary run + compilation buffer
+  const estimatedTimePerBinaryRunSec = 5
+  const compilationBufferSec = 60
+  const timeoutSeconds = compilationBufferSec + (warmup + iterations) * 2 * estimatedTimePerBinaryRunSec
+
+  const base64HarnessCode = Buffer.from(harnessCode).toString('base64')
+
+  logger.info({ submissionId: opts.submissionId, benchmarkName: benchmark.name, timeoutSeconds }, 'benchmark_execution_starting')
+
+  const response = await executionClient.execute({
+    code: base64HarnessCode,
+    args: [],
+    timeoutSeconds,
+  })
+
+  if (response.timedOut) {
+    logger.warn({ submissionId: opts.submissionId, benchmarkName: benchmark.name }, 'benchmark_execution_timed_out')
+    return ''
+  }
+
+  if (response.exitCode !== 0) {
+    logger.warn({ submissionId: opts.submissionId, benchmarkName: benchmark.name, exitCode: response.exitCode, stderr: response.stderr }, 'benchmark_execution_failed')
+    return ''
+  }
+
+  return response.stdout
 }
 
 export function createExecutionProcessor(

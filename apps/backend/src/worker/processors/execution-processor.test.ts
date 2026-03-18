@@ -4,7 +4,7 @@ import { ExecutionServiceError } from '@mycscompanion/execution'
 import { db } from '../../shared/db.js'
 import type { EventPublisher } from '../../shared/event-publisher.js'
 import type { ExecutionJobData } from '../../shared/queue.js'
-import { createExecutionProcessor } from './execution-processor.js'
+import { createExecutionProcessor, runBenchmarkOnService } from './execution-processor.js'
 import type { ExecutionJob, RunBenchmarkFn } from './execution-processor.js'
 import type { ContentLoader } from '../../plugins/curriculum/content-loader.js'
 import pino from 'pino'
@@ -450,6 +450,142 @@ describe('ExecutionProcessor', () => {
     expect(runBenchmark).toHaveBeenCalledTimes(1)
     const benchmarkCall = (runBenchmark as ReturnType<typeof vi.fn>).mock.calls[0]![0] as { executionClient: ExecutionServiceClient }
     expect(benchmarkCall.executionClient).toBe(executionClient)
+  })
+
+  it('should call executionClient.execute() with base64-encoded Go harness containing user and reference code', async () => {
+    const executionClient = createMockExecutionClient({ stdout: '', exitCode: 0 })
+
+    await runBenchmarkOnService({
+      executionClient,
+      code: 'package main\nfunc main() {}',
+      submissionId: 'sub-bench-test',
+      milestoneId: 'ms-1',
+      referenceMainGo: 'package main\nfunc main() { /* ref */ }',
+      referenceGoMod: 'module tycs/kv-store-reference\n\ngo 1.21.4',
+      benchmark: { name: 'sequential-inserts', workload: { type: 'inserts', numOperations: 500, keySizeBytes: 8, valueSizeBytes: 32 } },
+      warmup: 1,
+      iterations: 3,
+      logger,
+    })
+
+    const executeMock = executionClient.execute as ReturnType<typeof vi.fn>
+    expect(executeMock).toHaveBeenCalledTimes(1)
+    const callArgs = executeMock.mock.calls[0]![0] as { code: string; args: string[]; timeoutSeconds: number }
+
+    // Decode the base64 harness code and verify it contains both user and reference code
+    const harnessCode = Buffer.from(callArgs.code, 'base64').toString('utf-8')
+    expect(harnessCode).toContain('package main')
+    expect(harnessCode).toContain('func main() {}') // user code embedded
+    expect(harnessCode).toContain('/* ref */') // reference code embedded
+    expect(harnessCode).toContain('numOps = 500')
+    expect(harnessCode).toContain('keySize = 8')
+    expect(harnessCode).toContain('valueSize = 32')
+    // Verify go build commands set Dir to their respective source directories
+    expect(harnessCode).toContain('buildUser.Dir = userDir')
+    expect(harnessCode).toContain('buildRef.Dir = refDir')
+    // Verify p50/p99 are aggregated across iterations via median, not just last value
+    expect(harnessCode).toContain('median(userP50s)')
+    expect(harnessCode).toContain('median(refP50s)')
+    expect(callArgs.args).toEqual([])
+    expect(callArgs.timeoutSeconds).toBeGreaterThan(0)
+  })
+
+  it('should publish benchmark_result SSE event and persist to DB when benchmark returns valid JSON', async () => {
+    await seedMilestone()
+    await seedUserAndSubmission()
+
+    const BENCHMARK_STDOUT = [
+      '{"type":"benchmark_iteration","target":"user","iteration":1,"total":12,"ops_per_sec":8500,"p50_latency_us":117,"p99_latency_us":450}',
+      '{"type":"benchmark_iteration","target":"reference","iteration":1,"total":12,"ops_per_sec":10200,"p50_latency_us":98,"p99_latency_us":380}',
+      '{"type":"benchmark_complete","user_median_ops":8200,"reference_median_ops":10100,"normalized_ratio":0.8119,"user_p50_us":120,"user_p99_us":445,"ref_p50_us":100,"ref_p99_us":385}',
+    ].join('\n')
+
+    const executionClient = createMockExecutionClient({ stdout: 'ok\n', exitCode: 0 })
+    const eventPublisher = createMockEventPublisher()
+    const contentLoader = createMockContentLoader()
+    ;(contentLoader.loadBenchmarkConfig as ReturnType<typeof vi.fn>).mockResolvedValue({
+      benchmarks: [{
+        name: 'sequential-inserts',
+        warmupIterations: 2,
+        measuredIterations: 10,
+        referenceVersion: 'milestone-1-v1',
+        workload: { type: 'inserts', numOperations: 1000 },
+        targetMetrics: { opsPerSec: 100 },
+      }],
+    })
+
+    const runBenchmark: RunBenchmarkFn = vi.fn().mockResolvedValue(BENCHMARK_STDOUT)
+
+    const processor = createExecutionProcessor({
+      executionClient,
+      db,
+      eventPublisher,
+      logger,
+      contentLoader,
+      defaultTimeoutSeconds: 30,
+      runBenchmark,
+    })
+
+    await processor(createTestJob())
+
+    // Verify benchmark_result SSE event published
+    const publishCalls = (eventPublisher.publish as ReturnType<typeof vi.fn>).mock.calls as Array<[string, { type: string; userMedian?: number; normalizedRatio?: number }]>
+    const benchmarkResultEvent = publishCalls.find((call) => call[1].type === 'benchmark_result')
+    expect(benchmarkResultEvent).toBeDefined()
+    expect(benchmarkResultEvent![1].userMedian).toBe(8200)
+    expect(benchmarkResultEvent![1].normalizedRatio).toBe(0.8119)
+
+    // Verify benchmark result persisted to DB
+    const benchmarkRow = await db
+      .selectFrom('benchmark_results')
+      .selectAll()
+      .where('submission_id', '=', TEST_SUBMISSION_ID)
+      .executeTakeFirst()
+    expect(benchmarkRow).toBeDefined()
+    expect(benchmarkRow?.benchmark_name).toBe('sequential-inserts')
+  })
+
+  it('should log benchmark_produced_no_results and not fail submission when benchmark returns empty stdout', async () => {
+    await seedMilestone()
+    await seedUserAndSubmission()
+
+    const executionClient = createMockExecutionClient({ stdout: 'ok\n', exitCode: 0 })
+    const eventPublisher = createMockEventPublisher()
+    const contentLoader = createMockContentLoader()
+    ;(contentLoader.loadBenchmarkConfig as ReturnType<typeof vi.fn>).mockResolvedValue({
+      benchmarks: [{
+        name: 'sequential-inserts',
+        warmupIterations: 2,
+        measuredIterations: 10,
+        referenceVersion: 'v1',
+        workload: { type: 'inserts', numOperations: 1000 },
+        targetMetrics: { opsPerSec: 100 },
+      }],
+    })
+
+    // Simulate benchmark returning empty (e.g., compilation error in harness)
+    const runBenchmark: RunBenchmarkFn = vi.fn().mockResolvedValue('')
+
+    const processor = createExecutionProcessor({
+      executionClient,
+      db,
+      eventPublisher,
+      logger,
+      contentLoader,
+      defaultTimeoutSeconds: 30,
+      runBenchmark,
+    })
+
+    await processor(createTestJob())
+
+    // Submission should still complete successfully (benchmark failure is non-fatal)
+    const row = await db.selectFrom('submissions').selectAll().where('id', '=', TEST_SUBMISSION_ID).executeTakeFirst()
+    expect(row?.status).toBe('completed')
+
+    // No benchmark_result SSE event should be published
+    const publishCalls = (eventPublisher.publish as ReturnType<typeof vi.fn>).mock.calls as Array<[string, { type: string }]>
+    const benchmarkResultEvent = publishCalls.find((call) => call[1].type === 'benchmark_result')
+    expect(benchmarkResultEvent).toBeUndefined()
   })
 
   it('should update DB submission with correct execution_result JSON (no machineId)', async () => {

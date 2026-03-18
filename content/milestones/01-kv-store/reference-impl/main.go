@@ -2,10 +2,14 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -296,49 +300,70 @@ func runTests() {
 }
 
 func runBenchmark() {
+	benchFlags := flag.NewFlagSet("benchmark", flag.ExitOnError)
+	numOps := benchFlags.Int("ops", 1000, "number of operations per iteration")
+	keySize := benchFlags.Int("key-size", 16, "key size in bytes")
+	valueSize := benchFlags.Int("value-size", 64, "value size in bytes")
+	benchFlags.Parse(os.Args[2:])
+
 	dataFile := "bench_data.db"
 	defer os.Remove(dataFile)
 
-	const numKeys = 1000
-	keys := make([]string, numKeys)
-	values := make([]string, numKeys)
-	for i := 0; i < numKeys; i++ {
-		keys[i] = randomString(16)
-		values[i] = randomString(64)
+	keys := make([]string, *numOps)
+	values := make([]string, *numOps)
+	for i := 0; i < *numOps; i++ {
+		keys[i] = randomString(*keySize)
+		values[i] = randomString(*valueSize)
 	}
 
-	fmt.Println("Warming up...")
-	for w := 0; w < 2; w++ {
-		os.Remove(dataFile)
-		store, _ := NewKVStore(dataFile)
-		for i := 0; i < numKeys; i++ {
-			store.Put(keys[i], values[i])
-		}
-		store.Close()
+	store, err := NewKVStore(dataFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create store: %v\n", err)
+		os.Exit(1)
 	}
 
-	fmt.Println("Benchmarking sequential inserts...")
-	var totalDuration time.Duration
-	const measuredRuns = 10
-
-	for r := 0; r < measuredRuns; r++ {
-		os.Remove(dataFile)
-		store, _ := NewKVStore(dataFile)
-
+	latencies := make([]float64, *numOps)
+	for i := 0; i < *numOps; i++ {
 		start := time.Now()
-		for i := 0; i < numKeys; i++ {
-			store.Put(keys[i], values[i])
-		}
-		elapsed := time.Since(start)
-		totalDuration += elapsed
-		store.Close()
+		store.Put(keys[i], values[i])
+		latencies[i] = float64(time.Since(start).Microseconds())
 	}
+	store.Close()
 
-	avgDuration := totalDuration / measuredRuns
-	opsPerSec := float64(numKeys) / avgDuration.Seconds()
+	sort.Float64s(latencies)
+	var totalUs float64
+	for _, l := range latencies {
+		totalUs += l
+	}
+	opsPerSec := float64(*numOps) / (totalUs / 1e6)
+	p50 := percentileFloat(latencies, 50)
+	p99 := percentileFloat(latencies, 99)
 
-	fmt.Printf("Results: %d inserts, avg %.2fms, %.0f ops/sec\n",
-		numKeys, float64(avgDuration.Microseconds())/1000.0, opsPerSec)
+	result := map[string]interface{}{
+		"type":           "benchmark_iteration",
+		"target":         "self",
+		"iteration":      1,
+		"total":          1,
+		"ops_per_sec":    math.Round(opsPerSec*100) / 100,
+		"p50_latency_us": math.Round(p50*100) / 100,
+		"p99_latency_us": math.Round(p99*100) / 100,
+	}
+	jsonBytes, _ := json.Marshal(result)
+	fmt.Println(string(jsonBytes))
+}
+
+func percentileFloat(sorted []float64, pct int) float64 {
+	if len(sorted) == 0 {
+		return 0
+	}
+	idx := float64(pct) / 100.0 * float64(len(sorted)-1)
+	lower := int(idx)
+	upper := lower + 1
+	if upper >= len(sorted) {
+		return sorted[len(sorted)-1]
+	}
+	frac := idx - float64(lower)
+	return sorted[lower]*(1-frac) + sorted[upper]*frac
 }
 
 func randomString(n int) string {
