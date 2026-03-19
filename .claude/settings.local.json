@@ -23,7 +23,9 @@
       "Bash(curl:*)",
       "WebFetch(domain:react-resizable-panels.vercel.app)",
       "Bash(grep:*)",
-      "Bash(gh run:*)"
+      "Bash(gh run:*)",
+      "Bash(npx turbo:*)",
+      "Bash(go test:*)"
     ]
   }
 }
