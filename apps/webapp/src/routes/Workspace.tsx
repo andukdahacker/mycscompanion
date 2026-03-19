@@ -151,9 +151,11 @@ function Workspace(): React.ReactElement | null {
         method: 'POST',
         body: JSON.stringify({ submissionId: sId }),
       }),
-    onSuccess: () => {
-      if (milestoneId) {
-        navigate(`/completion/${milestoneId}`)
+    onSuccess: (data) => {
+      if (data.nextMilestoneId) {
+        navigate(`/completion/${data.nextMilestoneId}`)
+      } else {
+        navigate('/overview')
       }
     },
   })
