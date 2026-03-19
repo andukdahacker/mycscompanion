@@ -88,14 +88,24 @@ export async function loadCurrentCode(
 ): Promise<string> {
   const snapshot = await db
     .selectFrom('code_snapshots')
-    .select('code')
+    .select(['code', 'files'])
     .where('user_id', '=', userId)
     .where('milestone_id', '=', milestoneId)
     .orderBy('created_at', 'desc')
     .limit(1)
     .executeTakeFirst()
 
-  return snapshot?.code ?? '(No code submitted yet)'
+  if (!snapshot) return '(No code submitted yet)'
+
+  // Multi-file: format with filename headers for the AI prompt
+  if (snapshot.files && typeof snapshot.files === 'object' && !Array.isArray(snapshot.files)) {
+    const files = snapshot.files as Record<string, string>
+    return Object.entries(files)
+      .map(([name, content]) => `// === ${name} ===\n${content}`)
+      .join('\n\n')
+  }
+
+  return snapshot.code ?? '(No code submitted yet)'
 }
 
 export async function loadCriteriaStatus(

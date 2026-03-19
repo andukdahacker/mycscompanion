@@ -46,7 +46,9 @@ function createMockContentLoader(): ContentLoader {
     listConceptExplainerAssets: vi.fn().mockResolvedValue([]),
     getStarterCodePath: vi.fn().mockResolvedValue(null),
     loadStarterCode: vi.fn().mockResolvedValue(null),
-    loadMetadata: vi.fn().mockResolvedValue({ title: 'Test', description: '', csConceptLabel: null }),
+    loadStarterFiles: vi.fn().mockResolvedValue(null),
+    loadReferenceFiles: vi.fn().mockResolvedValue(null),
+    loadMetadata: vi.fn().mockResolvedValue({ title: 'Test', description: '', csConceptLabel: null, editableFiles: null }),
     invalidateCache: vi.fn().mockResolvedValue(undefined),
     invalidateAllCaches: vi.fn().mockResolvedValue(undefined),
   }
@@ -432,7 +434,7 @@ describe('ExecutionProcessor', () => {
     })
 
     // The runBenchmark mock receives executionClient in its opts
-    const runBenchmark: RunBenchmarkFn = vi.fn().mockResolvedValue(BENCHMARK_STDOUT)
+    const runBenchmark: RunBenchmarkFn = vi.fn().mockResolvedValue({ userStdout: BENCHMARK_STDOUT, refStdout: BENCHMARK_STDOUT })
 
     const processor = createExecutionProcessor({
       executionClient,
@@ -452,42 +454,35 @@ describe('ExecutionProcessor', () => {
     expect(benchmarkCall.executionClient).toBe(executionClient)
   })
 
-  it('should call executionClient.execute() with base64-encoded Go harness containing user and reference code', async () => {
+  it('should call executionClient.execute() twice with base64-encoded user and reference files', async () => {
     const executionClient = createMockExecutionClient({ stdout: '', exitCode: 0 })
 
     await runBenchmarkOnService({
       executionClient,
-      code: 'package main\nfunc main() {}',
+      userFiles: { 'main.go': 'package main\nfunc main() {}' },
+      referenceFiles: { 'main.go': 'package main\nfunc main() { /* ref */ }' },
       submissionId: 'sub-bench-test',
       milestoneId: 'ms-1',
-      referenceMainGo: 'package main\nfunc main() { /* ref */ }',
-      referenceGoMod: 'module tycs/kv-store-reference\n\ngo 1.21.4',
       benchmark: { name: 'sequential-inserts', workload: { type: 'inserts', numOperations: 500, keySizeBytes: 8, valueSizeBytes: 32 } },
-      warmup: 1,
-      iterations: 3,
       logger,
     })
 
     const executeMock = executionClient.execute as ReturnType<typeof vi.fn>
-    expect(executeMock).toHaveBeenCalledTimes(1)
-    const callArgs = executeMock.mock.calls[0]![0] as { code: string; args: string[]; timeoutSeconds: number }
+    // Two-call benchmark: one for user files, one for reference files
+    expect(executeMock).toHaveBeenCalledTimes(2)
 
-    // Decode the base64 harness code and verify it contains both user and reference code
-    const harnessCode = Buffer.from(callArgs.code, 'base64').toString('utf-8')
-    expect(harnessCode).toContain('package main')
-    expect(harnessCode).toContain('func main() {}') // user code embedded
-    expect(harnessCode).toContain('/* ref */') // reference code embedded
-    expect(harnessCode).toContain('numOps = 500')
-    expect(harnessCode).toContain('keySize = 8')
-    expect(harnessCode).toContain('valueSize = 32')
-    // Verify go build commands set Dir to their respective source directories
-    expect(harnessCode).toContain('buildUser.Dir = userDir')
-    expect(harnessCode).toContain('buildRef.Dir = refDir')
-    // Verify p50/p99 are aggregated across iterations via median, not just last value
-    expect(harnessCode).toContain('median(userP50s)')
-    expect(harnessCode).toContain('median(refP50s)')
-    expect(callArgs.args).toEqual([])
-    expect(callArgs.timeoutSeconds).toBeGreaterThan(0)
+    // Verify first call (user) has base64-encoded files and benchmark args
+    const userCallArgs = executeMock.mock.calls[0]![0] as { files: Record<string, string>; args: string[] }
+    expect(userCallArgs.files).toBeDefined()
+    const userMainGo = Buffer.from(userCallArgs.files['main.go']!, 'base64').toString('utf-8')
+    expect(userMainGo).toContain('func main() {}')
+    expect(userCallArgs.args).toContain('benchmark')
+
+    // Verify second call (reference) has reference files
+    const refCallArgs = executeMock.mock.calls[1]![0] as { files: Record<string, string>; args: string[] }
+    expect(refCallArgs.files).toBeDefined()
+    const refMainGo = Buffer.from(refCallArgs.files['main.go']!, 'base64').toString('utf-8')
+    expect(refMainGo).toContain('/* ref */')
   })
 
   it('should publish benchmark_result SSE event and persist to DB when benchmark returns valid JSON', async () => {
@@ -514,7 +509,7 @@ describe('ExecutionProcessor', () => {
       }],
     })
 
-    const runBenchmark: RunBenchmarkFn = vi.fn().mockResolvedValue(BENCHMARK_STDOUT)
+    const runBenchmark: RunBenchmarkFn = vi.fn().mockResolvedValue({ userStdout: BENCHMARK_STDOUT, refStdout: BENCHMARK_STDOUT })
 
     const processor = createExecutionProcessor({
       executionClient,
@@ -564,7 +559,7 @@ describe('ExecutionProcessor', () => {
     })
 
     // Simulate benchmark returning empty (e.g., compilation error in harness)
-    const runBenchmark: RunBenchmarkFn = vi.fn().mockResolvedValue('')
+    const runBenchmark: RunBenchmarkFn = vi.fn().mockResolvedValue({ userStdout: '', refStdout: '' })
 
     const processor = createExecutionProcessor({
       executionClient,
@@ -672,10 +667,10 @@ describe('ExecutionProcessor', () => {
     expect(statusAtFirstEvent).toBe('running')
   })
 
-  it('should reject code exceeding 64KB size limit', async () => {
+  it('should reject code exceeding 128KB size limit', async () => {
     await seedUserAndSubmission()
 
-    const oversizedCode = 'package main\nfunc main() {}\n' + 'x'.repeat(64 * 1024)
+    const oversizedCode = 'package main\nfunc main() {}\n' + 'x'.repeat(128 * 1024)
     const executionClient = createMockExecutionClient({ exitCode: 0 })
     const eventPublisher = createMockEventPublisher()
 
@@ -702,7 +697,7 @@ describe('ExecutionProcessor', () => {
     // Should mark submission as failed
     const row = await db.selectFrom('submissions').selectAll().where('id', '=', TEST_SUBMISSION_ID).executeTakeFirst()
     expect(row?.status).toBe('failed')
-    expect(row?.error_message).toContain('64KB')
+    expect(row?.error_message).toContain('128KB')
   })
 
   it('should store execution_result for timed-out submissions', async () => {

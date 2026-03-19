@@ -166,8 +166,8 @@ func main() {
 }
 
 func TestExecute_CodeSizeLimitRejection(t *testing.T) {
-	// Create code larger than 64KB
-	bigCode := "package main\n\nfunc main() {}\n" + strings.Repeat("// padding\n", 7000)
+	// Create code larger than 128KB
+	bigCode := "package main\n\nfunc main() {}\n" + strings.Repeat("// padding\n", 14000)
 	if len(bigCode) <= MAX_CODE_SIZE_BYTES {
 		t.Fatal("test setup: code should exceed MAX_CODE_SIZE_BYTES")
 	}
@@ -261,5 +261,212 @@ func TestExecute_InvalidBase64(t *testing.T) {
 
 	if resp.Stderr != "invalid base64 encoding" {
 		t.Fatalf("expected stderr 'invalid base64 encoding', got %q", resp.Stderr)
+	}
+}
+
+func TestExecute_MultiFile_Success(t *testing.T) {
+	mainGo := `package main
+
+import "fmt"
+
+func main() {
+	fmt.Println(Hello())
+}
+`
+	helperGo := `package main
+
+func Hello() string {
+	return "hello from helper"
+}
+`
+	req := ExecuteRequest{
+		Files: map[string]string{
+			"main.go":   base64.StdEncoding.EncodeToString([]byte(mainGo)),
+			"helper.go": base64.StdEncoding.EncodeToString([]byte(helperGo)),
+		},
+		TimeoutSeconds: 30,
+	}
+
+	resp := Execute(context.Background(), req, testLogger(), "test-multi-1")
+
+	if resp.ExitCode != 0 {
+		t.Fatalf("expected exit_code 0, got %d. stderr: %s", resp.ExitCode, resp.Stderr)
+	}
+	if strings.TrimSpace(resp.Stdout) != "hello from helper" {
+		t.Fatalf("expected 'hello from helper', got %q", resp.Stdout)
+	}
+}
+
+func TestExecute_MultiFile_WithGoMod(t *testing.T) {
+	mainGo := `package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("with go.mod")
+}
+`
+	goMod := `module workspace
+
+go 1.23
+`
+	req := ExecuteRequest{
+		Files: map[string]string{
+			"main.go": base64.StdEncoding.EncodeToString([]byte(mainGo)),
+			"go.mod":  base64.StdEncoding.EncodeToString([]byte(goMod)),
+		},
+		TimeoutSeconds: 30,
+	}
+
+	resp := Execute(context.Background(), req, testLogger(), "test-multi-2")
+
+	if resp.ExitCode != 0 {
+		t.Fatalf("expected exit_code 0, got %d. stderr: %s", resp.ExitCode, resp.Stderr)
+	}
+	if strings.TrimSpace(resp.Stdout) != "with go.mod" {
+		t.Fatalf("expected 'with go.mod', got %q", resp.Stdout)
+	}
+}
+
+func TestExecute_MultiFile_GoModFallback(t *testing.T) {
+	mainGo := `package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("no go.mod provided")
+}
+`
+	req := ExecuteRequest{
+		Files: map[string]string{
+			"main.go": base64.StdEncoding.EncodeToString([]byte(mainGo)),
+		},
+		TimeoutSeconds: 30,
+	}
+
+	resp := Execute(context.Background(), req, testLogger(), "test-multi-3")
+
+	if resp.ExitCode != 0 {
+		t.Fatalf("expected exit_code 0, got %d. stderr: %s", resp.ExitCode, resp.Stderr)
+	}
+	if strings.TrimSpace(resp.Stdout) != "no go.mod provided" {
+		t.Fatalf("expected 'no go.mod provided', got %q", resp.Stdout)
+	}
+}
+
+func TestExecute_MultiFile_PathTraversalRejected(t *testing.T) {
+	req := ExecuteRequest{
+		Files: map[string]string{
+			"../../etc/passwd": base64.StdEncoding.EncodeToString([]byte("malicious")),
+		},
+		TimeoutSeconds: 30,
+	}
+
+	resp := Execute(context.Background(), req, testLogger(), "test-multi-4")
+
+	if resp.Error != ErrInvalidFilename {
+		t.Fatalf("expected ErrInvalidFilename, got %q", resp.Error)
+	}
+	if resp.ExitCode != 2 {
+		t.Fatalf("expected exit_code 2, got %d", resp.ExitCode)
+	}
+}
+
+func TestExecute_MultiFile_AbsolutePathRejected(t *testing.T) {
+	req := ExecuteRequest{
+		Files: map[string]string{
+			"/tmp/evil.go": base64.StdEncoding.EncodeToString([]byte("package main")),
+		},
+		TimeoutSeconds: 30,
+	}
+
+	resp := Execute(context.Background(), req, testLogger(), "test-multi-5")
+
+	if resp.Error != ErrInvalidFilename {
+		t.Fatalf("expected ErrInvalidFilename, got %q", resp.Error)
+	}
+}
+
+func TestExecute_MultiFile_TotalSizeExceeded(t *testing.T) {
+	// Each file is 70KB — total exceeds 128KB limit
+	bigContent := strings.Repeat("// padding\n", 7000)
+	file1 := "package main\n\nfunc main() {}\n" + bigContent
+	file2 := "package main\n\n" + bigContent
+
+	req := ExecuteRequest{
+		Files: map[string]string{
+			"main.go":   base64.StdEncoding.EncodeToString([]byte(file1)),
+			"helper.go": base64.StdEncoding.EncodeToString([]byte(file2)),
+		},
+		TimeoutSeconds: 30,
+	}
+
+	resp := Execute(context.Background(), req, testLogger(), "test-multi-6")
+
+	if resp.Error != ErrCodeTooLarge {
+		t.Fatalf("expected ErrCodeTooLarge, got %q", resp.Error)
+	}
+}
+
+func TestExecute_MultiFile_InvalidBase64InFile(t *testing.T) {
+	req := ExecuteRequest{
+		Files: map[string]string{
+			"main.go": "not-valid-base64!!!",
+		},
+		TimeoutSeconds: 30,
+	}
+
+	resp := Execute(context.Background(), req, testLogger(), "test-multi-7")
+
+	if resp.Error != ErrInvalidBase64 {
+		t.Fatalf("expected ErrInvalidBase64, got %q", resp.Error)
+	}
+}
+
+func TestExecute_MultiFile_ThreeFilesWithArgs(t *testing.T) {
+	mainGo := `package main
+
+import (
+	"fmt"
+	"os"
+)
+
+func main() {
+	if len(os.Args) > 1 && os.Args[1] == "test" {
+		fmt.Println("TEST:" + GetValue())
+	}
+}
+`
+	kvGo := `package main
+
+func GetValue() string {
+	return Transform("hello")
+}
+`
+	walGo := `package main
+
+import "strings"
+
+func Transform(s string) string {
+	return strings.ToUpper(s)
+}
+`
+	req := ExecuteRequest{
+		Files: map[string]string{
+			"main.go": base64.StdEncoding.EncodeToString([]byte(mainGo)),
+			"kv.go":   base64.StdEncoding.EncodeToString([]byte(kvGo)),
+			"wal.go":  base64.StdEncoding.EncodeToString([]byte(walGo)),
+		},
+		Args:           []string{"test"},
+		TimeoutSeconds: 30,
+	}
+
+	resp := Execute(context.Background(), req, testLogger(), "test-multi-8")
+
+	if resp.ExitCode != 0 {
+		t.Fatalf("expected exit_code 0, got %d. stderr: %s", resp.ExitCode, resp.Stderr)
+	}
+	if strings.TrimSpace(resp.Stdout) != "TEST:HELLO" {
+		t.Fatalf("expected 'TEST:HELLO', got %q", resp.Stdout)
 	}
 }

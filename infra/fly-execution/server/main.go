@@ -57,10 +57,10 @@ func NewHandler(secret string, maxConcurrent int, logger *slog.Logger) http.Hand
 			return
 		}
 
-		if req.Code == "" {
+		if req.Code == "" && len(req.Files) == 0 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(map[string]string{"error": "code is required"})
+			json.NewEncoder(w).Encode(map[string]string{"error": "code or files is required"})
 			return
 		}
 
@@ -78,6 +78,12 @@ func NewHandler(secret string, maxConcurrent int, logger *slog.Logger) http.Hand
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "invalid base64 encoding"})
+			return
+		}
+		if resp.Error == ErrInvalidFilename {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid filename"})
 			return
 		}
 

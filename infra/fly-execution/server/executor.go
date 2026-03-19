@@ -17,16 +17,17 @@ import (
 )
 
 const (
-	MAX_CODE_SIZE_BYTES  = 64 * 1024       // 64KB
+	MAX_CODE_SIZE_BYTES  = 128 * 1024      // 128KB (multi-file projects)
 	MAX_OUTPUT_BYTES     = 1 * 1024 * 1024  // 1MB
 	MAX_TIMEOUT_SECONDS  = 60               // Cap user-supplied timeout
 	defaultTimeout       = 30 * time.Second
 )
 
 type ExecuteRequest struct {
-	Code           string   `json:"code"`
-	Args           []string `json:"args"`
-	TimeoutSeconds int      `json:"timeout_seconds"`
+	Code           string            `json:"code"`
+	Files          map[string]string `json:"files,omitempty"`
+	Args           []string          `json:"args"`
+	TimeoutSeconds int               `json:"timeout_seconds"`
 }
 
 // ErrorCode identifies pre-execution errors so the HTTP handler can return
@@ -34,9 +35,10 @@ type ExecuteRequest struct {
 type ErrorCode string
 
 const (
-	ErrNone           ErrorCode = ""
-	ErrCodeTooLarge   ErrorCode = "code_too_large"
-	ErrInvalidBase64  ErrorCode = "invalid_base64"
+	ErrNone            ErrorCode = ""
+	ErrCodeTooLarge    ErrorCode = "code_too_large"
+	ErrInvalidBase64   ErrorCode = "invalid_base64"
+	ErrInvalidFilename ErrorCode = "invalid_filename"
 )
 
 type ExecuteResponse struct {
@@ -52,26 +54,6 @@ type ExecuteResponse struct {
 
 func Execute(ctx context.Context, req ExecuteRequest, logger *slog.Logger, requestID string) ExecuteResponse {
 	start := time.Now()
-
-	// Decode and validate code size
-	decoded, err := base64.StdEncoding.DecodeString(req.Code)
-	if err != nil {
-		return ExecuteResponse{
-			Stderr:     "invalid base64 encoding",
-			ExitCode:   2,
-			DurationMs: time.Since(start).Milliseconds(),
-			Error:      ErrInvalidBase64,
-		}
-	}
-
-	if len(decoded) > MAX_CODE_SIZE_BYTES {
-		return ExecuteResponse{
-			Stderr:     "code too large",
-			ExitCode:   2,
-			DurationMs: time.Since(start).Milliseconds(),
-			Error:      ErrCodeTooLarge,
-		}
-	}
 
 	// Determine timeout (capped to prevent resource exhaustion)
 	timeout := defaultTimeout
@@ -95,26 +77,127 @@ func Execute(ctx context.Context, req ExecuteRequest, logger *slog.Logger, reque
 	}
 	defer os.RemoveAll(tmpdir)
 
-	// Write main.go
-	mainGoPath := filepath.Join(tmpdir, "main.go")
-	if err := os.WriteFile(mainGoPath, decoded, 0644); err != nil {
-		logger.Error("failed to write main.go", "error", err, "request_id", requestID)
-		return ExecuteResponse{
-			Stderr:     "internal error: failed to write code",
-			ExitCode:   1,
-			DurationMs: time.Since(start).Milliseconds(),
-		}
-	}
+	var codeSizeBytes int
 
-	// Write go.mod
-	goModPath := filepath.Join(tmpdir, "go.mod")
-	goModContent := "module workspace\n\ngo 1.23\n"
-	if err := os.WriteFile(goModPath, []byte(goModContent), 0644); err != nil {
-		logger.Error("failed to write go.mod", "error", err, "request_id", requestID)
-		return ExecuteResponse{
-			Stderr:     "internal error: failed to write go.mod",
-			ExitCode:   1,
-			DurationMs: time.Since(start).Milliseconds(),
+	// Multi-file path: decode and write all files
+	if len(req.Files) > 0 {
+		totalSize := 0
+		for filename, encoded := range req.Files {
+			// Filename sanitization: reject path traversal
+			if strings.Contains(filename, "..") || filepath.IsAbs(filename) {
+				return ExecuteResponse{
+					Stderr:     fmt.Sprintf("invalid filename: %s", filename),
+					ExitCode:   2,
+					DurationMs: time.Since(start).Milliseconds(),
+					Error:      ErrInvalidFilename,
+				}
+			}
+			cleaned := filepath.Join(tmpdir, filename)
+			if !strings.HasPrefix(filepath.Clean(cleaned), filepath.Clean(tmpdir)) {
+				return ExecuteResponse{
+					Stderr:     fmt.Sprintf("invalid filename: %s", filename),
+					ExitCode:   2,
+					DurationMs: time.Since(start).Milliseconds(),
+					Error:      ErrInvalidFilename,
+				}
+			}
+
+			decoded, err := base64.StdEncoding.DecodeString(encoded)
+			if err != nil {
+				return ExecuteResponse{
+					Stderr:     fmt.Sprintf("invalid base64 encoding for file: %s", filename),
+					ExitCode:   2,
+					DurationMs: time.Since(start).Milliseconds(),
+					Error:      ErrInvalidBase64,
+				}
+			}
+			totalSize += len(decoded)
+			if totalSize > MAX_CODE_SIZE_BYTES {
+				return ExecuteResponse{
+					Stderr:     "total code size exceeds limit",
+					ExitCode:   2,
+					DurationMs: time.Since(start).Milliseconds(),
+					Error:      ErrCodeTooLarge,
+				}
+			}
+
+			// Create parent directories if needed (e.g., "pkg/util.go")
+			if dir := filepath.Dir(cleaned); dir != tmpdir {
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					logger.Error("failed to create directory", "dir", dir, "error", err, "request_id", requestID)
+					return ExecuteResponse{
+						Stderr:     fmt.Sprintf("internal error: failed to create directory for: %s", filename),
+						ExitCode:   1,
+						DurationMs: time.Since(start).Milliseconds(),
+					}
+				}
+			}
+
+			if err := os.WriteFile(cleaned, decoded, 0644); err != nil {
+				logger.Error("failed to write file", "filename", filename, "error", err, "request_id", requestID)
+				return ExecuteResponse{
+					Stderr:     fmt.Sprintf("internal error: failed to write file: %s", filename),
+					ExitCode:   1,
+					DurationMs: time.Since(start).Milliseconds(),
+				}
+			}
+		}
+
+		codeSizeBytes = totalSize
+
+		// go.mod fallback: auto-generate if not provided
+		if _, hasGoMod := req.Files["go.mod"]; !hasGoMod {
+			goModContent := "module workspace\n\ngo 1.23\n"
+			if err := os.WriteFile(filepath.Join(tmpdir, "go.mod"), []byte(goModContent), 0644); err != nil {
+				logger.Error("failed to write go.mod", "error", err, "request_id", requestID)
+				return ExecuteResponse{
+					Stderr:     "internal error: failed to write go.mod",
+					ExitCode:   1,
+					DurationMs: time.Since(start).Milliseconds(),
+				}
+			}
+		}
+	} else {
+		// Single-file path (M1 backward compat)
+		decoded, err := base64.StdEncoding.DecodeString(req.Code)
+		if err != nil {
+			return ExecuteResponse{
+				Stderr:     "invalid base64 encoding",
+				ExitCode:   2,
+				DurationMs: time.Since(start).Milliseconds(),
+				Error:      ErrInvalidBase64,
+			}
+		}
+
+		codeSizeBytes = len(decoded)
+		if len(decoded) > MAX_CODE_SIZE_BYTES {
+			return ExecuteResponse{
+				Stderr:     "code too large",
+				ExitCode:   2,
+				DurationMs: time.Since(start).Milliseconds(),
+				Error:      ErrCodeTooLarge,
+			}
+		}
+
+		// Write main.go
+		if err := os.WriteFile(filepath.Join(tmpdir, "main.go"), decoded, 0644); err != nil {
+			logger.Error("failed to write main.go", "error", err, "request_id", requestID)
+			return ExecuteResponse{
+				Stderr:     "internal error: failed to write code",
+				ExitCode:   1,
+				DurationMs: time.Since(start).Milliseconds(),
+			}
+		}
+
+		// Write go.mod
+		goModContent := "module workspace\n\ngo 1.23\n"
+		if err := os.WriteFile(filepath.Join(tmpdir, "go.mod"), []byte(goModContent), 0644); err != nil {
+			logger.Error("failed to write go.mod", "error", err, "request_id", requestID)
+			return ExecuteResponse{
+				Stderr:     "internal error: failed to write go.mod",
+				ExitCode:   1,
+				DurationMs: time.Since(start).Milliseconds(),
+			}
 		}
 	}
 
@@ -153,7 +236,7 @@ func Execute(ctx context.Context, req ExecuteRequest, logger *slog.Logger, reque
 			"request_id", requestID,
 			"exit_code", exitCode,
 			"duration_ms", time.Since(start).Milliseconds(),
-			"code_size_bytes", len(decoded),
+			"code_size_bytes", codeSizeBytes,
 			"phase", "build",
 			"timed_out", timedOut,
 		)
@@ -223,7 +306,7 @@ func Execute(ctx context.Context, req ExecuteRequest, logger *slog.Logger, reque
 		"duration_ms", totalDuration,
 		"build_duration_ms", buildDuration,
 		"run_duration_ms", runDuration,
-		"code_size_bytes", len(decoded),
+		"code_size_bytes", codeSizeBytes,
 		"timed_out", timedOut,
 	)
 

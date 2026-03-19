@@ -33,8 +33,12 @@ USER runner
 # Pre-warm Go build cache with common stdlib packages (AC9)
 # Runs as runner user so the build cache is in /home/runner/.cache/go-build
 # — the same location used when compiling user code at runtime.
-RUN echo 'package main; import (_ "fmt"; _ "os"; _ "strings"; _ "strconv"; _ "sync"; _ "io"; _ "bufio"; _ "encoding/json"); func main(){}' > /tmp/warm.go \
- && cd /tmp && go build -o /dev/null warm.go && rm warm.go
+RUN mkdir -p /tmp/warmup \
+ && echo 'module workspace' > /tmp/warmup/go.mod \
+ && echo '' >> /tmp/warmup/go.mod \
+ && echo 'go 1.23' >> /tmp/warmup/go.mod \
+ && echo 'package main; import (_ "fmt"; _ "os"; _ "strings"; _ "strconv"; _ "sync"; _ "io"; _ "bufio"; _ "encoding/json"; _ "encoding/binary"; _ "sort"; _ "math/rand"; _ "flag"; _ "time"); func main(){}' > /tmp/warmup/main.go \
+ && cd /tmp/warmup && go build -o /dev/null . && rm -rf /tmp/warmup
 
 EXPOSE 8080
 CMD ["execution-server"]

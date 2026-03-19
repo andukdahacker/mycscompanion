@@ -6,23 +6,27 @@ import type { RateLimitChecker } from '../../../shared/rate-limiter.js'
 import type { EventPublisher } from '../../../shared/event-publisher.js'
 import type { ExecutionJobData } from '../../../shared/queue.js'
 
-const MAX_CODE_SIZE_BYTES = 65536
+const MAX_CODE_SIZE_BYTES = 131072
 
 const submitSchema = {
   body: {
     type: 'object',
-    required: ['milestoneId', 'code'],
+    required: ['milestoneId'],
     properties: {
       milestoneId: { type: 'string', minLength: 1 },
       code: { type: 'string', minLength: 1, maxLength: MAX_CODE_SIZE_BYTES },
+      files: {
+        type: 'object',
+        additionalProperties: { type: 'string' },
+      },
     },
-    additionalProperties: false,
   },
 } as const
 
 interface SubmitBody {
   readonly milestoneId: string
-  readonly code: string
+  readonly code?: string
+  readonly files?: Record<string, string>
 }
 
 export interface ExecutionQueueAdd {
@@ -57,7 +61,13 @@ export async function submitRoutes(
       }
     }
 
-    const { milestoneId, code } = request.body
+    const { milestoneId, code, files } = request.body
+
+    if (!code && !files) {
+      reply.code(400)
+      return { error: { code: 'VALIDATION_ERROR', message: 'Either code or files is required' } }
+    }
+
     const id = generateId()
 
     // Insert submission row
@@ -68,7 +78,8 @@ export async function submitRoutes(
           id,
           user_id: request.uid,
           milestone_id: milestoneId,
-          code,
+          code: files ? null : (code ?? null),
+          files: files ? JSON.stringify(files) : null,
           status: 'queued',
         })
         .execute()
@@ -80,12 +91,13 @@ export async function submitRoutes(
 
     // Enqueue BullMQ job
     try {
-      await queue.add('execution-run', {
+      const jobData: ExecutionJobData = {
         submissionId: id,
         milestoneId,
-        code,
         userId: request.uid,
-      })
+        ...(files ? { files } : { code }),
+      }
+      await queue.add('execution-run', jobData)
     } catch (err) {
       request.log.error(err, 'queue_add_failed')
       // Update DB status to failed (protected against DB failure)
@@ -126,7 +138,8 @@ export async function submitRoutes(
               user_id: request.uid,
               milestone_id: milestoneId,
               session_id: session.id,
-              code,
+              code: files ? null : (code ?? null),
+              files: files ? JSON.stringify(files) : null,
             })
             .execute()
         }

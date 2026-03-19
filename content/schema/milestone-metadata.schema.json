@@ -7,6 +7,26 @@
     "csConceptLabel": {
       "type": "string",
       "description": "Short CS concept label for display (e.g., 'Systems Programming & I/O')"
+    },
+    "stuckDetection": {
+      "type": "object",
+      "description": "Stuck detection configuration for this milestone",
+      "properties": {
+        "thresholdMinutes": {
+          "type": "number",
+          "description": "Minutes before stuck intervention fires"
+        },
+        "stage2OffsetSeconds": {
+          "type": "number",
+          "description": "Seconds offset for stage 2 stuck detection"
+        }
+      },
+      "required": ["thresholdMinutes", "stage2OffsetSeconds"]
+    },
+    "editableFiles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of filenames the learner can edit (e.g., ['wal.go', 'kv.go']). Files not in this list are read-only."
     }
   },
   "additionalProperties": false

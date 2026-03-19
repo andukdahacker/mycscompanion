@@ -40,8 +40,9 @@ export interface BenchmarkResults {
 }
 
 export interface CodeSnapshots {
-  code: string;
+  code: string | null;
   created_at: Generated<Timestamp>;
+  files: Json | null;
   id: string;
   milestone_id: string;
   session_id: string;
@@ -138,11 +139,12 @@ export interface SessionSummaries {
 }
 
 export interface Submissions {
-  code: string;
+  code: string | null;
   created_at: Generated<Timestamp>;
   criteria_results: Json | null;
   error_message: string | null;
   execution_result: Json | null;
+  files: Json | null;
   id: string;
   milestone_id: string;
   status: Generated<string>;

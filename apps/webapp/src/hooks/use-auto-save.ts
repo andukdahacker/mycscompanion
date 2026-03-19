@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { apiFetch } from '../lib/api-fetch'
+import { useEditorStore } from '../stores/editor-store'
 
 interface UseAutoSaveOptions {
   readonly milestoneId: string
@@ -14,26 +15,28 @@ const RETRY_BASE_DELAY_MS = 1_000
 function useAutoSave({ milestoneId, enabled }: UseAutoSaveOptions) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastSavedCodeRef = useRef<string | null>(null)
+  const lastSavedHashRef = useRef<string | null>(null)
   const retryCountRef = useRef(0)
 
   const mutation = useMutation({
-    mutationFn: (code: string) =>
+    mutationFn: (payload: { code?: string; files?: Record<string, string> }) =>
       apiFetch<{ snapshotId: string }>('/api/progress/save', {
         method: 'POST',
-        body: JSON.stringify({ milestoneId, code }),
+        body: JSON.stringify({ milestoneId, ...payload }),
         keepalive: true,
       }),
-    onSuccess: (_data, code) => {
-      lastSavedCodeRef.current = code
+    onSuccess: (_data, payload) => {
+      lastSavedHashRef.current = payload.files
+        ? JSON.stringify(payload.files)
+        : (payload.code ?? null)
       retryCountRef.current = 0
     },
-    onError: (_error, code) => {
+    onError: (_error, payload) => {
       if (retryCountRef.current < MAX_RETRIES) {
         retryCountRef.current += 1
         const delay = RETRY_BASE_DELAY_MS * Math.pow(2, retryCountRef.current - 1)
         retryTimerRef.current = setTimeout(() => {
-          mutation.mutate(code)
+          mutation.mutate(payload)
         }, delay)
       }
     },
@@ -48,9 +51,20 @@ function useAutoSave({ milestoneId, enabled }: UseAutoSaveOptions) {
       }
 
       timerRef.current = setTimeout(() => {
-        if (code !== lastSavedCodeRef.current) {
-          retryCountRef.current = 0
-          mutation.mutate(code)
+        const storeState = useEditorStore.getState()
+        const isMultiFileNow = storeState.editableFiles.length > 0
+        if (isMultiFileNow) {
+          const editableSnapshot = storeState.getEditableFilesSnapshot()
+          const hash = JSON.stringify(editableSnapshot)
+          if (hash !== lastSavedHashRef.current) {
+            retryCountRef.current = 0
+            mutation.mutate({ files: editableSnapshot })
+          }
+        } else {
+          if (code !== lastSavedHashRef.current) {
+            retryCountRef.current = 0
+            mutation.mutate({ code })
+          }
         }
       }, AUTO_SAVE_DEBOUNCE_MS)
     },
@@ -63,9 +77,20 @@ function useAutoSave({ milestoneId, enabled }: UseAutoSaveOptions) {
       if (timerRef.current) {
         clearTimeout(timerRef.current)
       }
-      if (code !== lastSavedCodeRef.current) {
-        retryCountRef.current = 0
-        mutation.mutate(code)
+      const storeState = useEditorStore.getState()
+      const isMultiFileNow = storeState.editableFiles.length > 0
+      if (isMultiFileNow) {
+        const editableSnapshot = storeState.getEditableFilesSnapshot()
+        const hash = JSON.stringify(editableSnapshot)
+        if (hash !== lastSavedHashRef.current) {
+          retryCountRef.current = 0
+          mutation.mutate({ files: editableSnapshot })
+        }
+      } else {
+        if (code !== lastSavedHashRef.current) {
+          retryCountRef.current = 0
+          mutation.mutate({ code })
+        }
       }
     },
     [enabled, milestoneId],

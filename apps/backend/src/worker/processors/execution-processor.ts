@@ -1,5 +1,3 @@
-import { readFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
 import type { Kysely } from 'kysely'
 import type { Logger } from 'pino'
 import type { DB, AcceptanceCriterion, CriterionResult } from '@mycscompanion/shared'
@@ -17,7 +15,7 @@ import type { ContentLoader } from '../../plugins/curriculum/content-loader.js'
 import { evaluateCriteria, evaluateAllNotMet } from '../../shared/criteria-evaluator.js'
 import { persistBenchmarkResult } from '../../shared/benchmark-persistence.js'
 
-const MAX_CODE_SIZE_BYTES = 64 * 1024 // 64KB — defense in depth (Go server also validates)
+const MAX_CODE_SIZE_BYTES = 128 * 1024 // 128KB — defense in depth (Go server also validates)
 
 /** Narrow job interface — only properties actually used by the processor */
 export interface ExecutionJob {
@@ -27,16 +25,13 @@ export interface ExecutionJob {
 /** Signature for the benchmark execution function — injectable for testing */
 export type RunBenchmarkFn = (opts: {
   readonly executionClient: ExecutionServiceClient
-  readonly code: string
+  readonly userFiles: Record<string, string>
+  readonly referenceFiles: Record<string, string>
   readonly submissionId: string
   readonly milestoneId: string
-  readonly referenceMainGo: string
-  readonly referenceGoMod: string
   readonly benchmark: { readonly name: string; readonly workload?: { readonly type?: string; readonly numOperations?: number; readonly keySizeBytes?: number; readonly valueSizeBytes?: number } }
-  readonly warmup: number
-  readonly iterations: number
   readonly logger: Logger
-}) => Promise<string>
+}) => Promise<{ readonly userStdout: string; readonly refStdout: string }>
 
 export interface ExecutionProcessorDeps {
   readonly executionClient: ExecutionServiceClient
@@ -49,280 +44,62 @@ export interface ExecutionProcessorDeps {
 }
 
 /**
- * Runs a benchmark via the execution service by generating a self-contained
- * Go harness program that embeds both user and reference code, compiles and
- * runs them in isolated tempdirs, and outputs structured JSON to stdout.
+ * Runs a benchmark via the execution service using two sequential /execute calls
+ * (user files + reference files). Each binary's internal benchmark (warmup +
+ * 10 measured iterations) is the measurement layer.
  *
- * Returns stdout for parseBenchmarkOutput() to parse.
+ * Returns stdout from both calls for parseBenchmarkOutput() to parse.
  */
 export async function runBenchmarkOnService(opts: {
   readonly executionClient: ExecutionServiceClient
-  readonly code: string
+  readonly userFiles: Record<string, string>
+  readonly referenceFiles: Record<string, string>
   readonly submissionId: string
   readonly milestoneId: string
-  readonly referenceMainGo: string
-  readonly referenceGoMod: string
   readonly benchmark: { readonly name: string; readonly workload?: { readonly type?: string; readonly numOperations?: number; readonly keySizeBytes?: number; readonly valueSizeBytes?: number } }
-  readonly warmup: number
-  readonly iterations: number
   readonly logger: Logger
-}): Promise<string> {
-  const { executionClient, code, referenceMainGo, referenceGoMod, benchmark, warmup, iterations, logger } = opts
+}): Promise<{ readonly userStdout: string; readonly refStdout: string }> {
+  const { executionClient, userFiles, referenceFiles, benchmark, logger } = opts
+  const timeoutSeconds = 60
 
-  const numOps = benchmark.workload?.numOperations ?? 1000
-  const keySize = benchmark.workload?.keySizeBytes ?? 16
-  const valueSize = benchmark.workload?.valueSizeBytes ?? 64
+  const benchArgs = ['benchmark']
 
-  // Escape backticks and backslashes in embedded Go source for string literals
-  const escapeGoString = (s: string): string => s.replace(/\\/g, '\\\\').replace(/`/g, '` + "`" + `')
+  // Base64-encode all files for the Go server
+  function encodeFiles(files: Record<string, string>): Record<string, string> {
+    const encoded: Record<string, string> = {}
+    for (const [name, content] of Object.entries(files)) {
+      encoded[name] = Buffer.from(content).toString('base64')
+    }
+    return encoded
+  }
 
-  const escapedUserCode = escapeGoString(code)
-  const escapedRefCode = escapeGoString(referenceMainGo)
-  const escapedRefGoMod = escapeGoString(referenceGoMod)
+  logger.info({ submissionId: opts.submissionId, benchmarkName: benchmark.name }, 'benchmark_execution_starting')
 
-  const harnessCode = `package main
-
-import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"math"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"sort"
-	"strings"
-	"time"
-)
-
-const userCode = ` + '`' + escapedUserCode + '`' + `
-const refCode = ` + '`' + escapedRefCode + '`' + `
-const refGoMod = ` + '`' + escapedRefGoMod + '`' + `
-
-const warmupIterations = ${warmup}
-const measuredIterations = ${iterations}
-const numOps = ${numOps}
-const keySize = ${keySize}
-const valueSize = ${valueSize}
-
-type iterationResult struct {
-	Type       string  ` + '`json:"type"`' + `
-	Target     string  ` + '`json:"target"`' + `
-	Iteration  int     ` + '`json:"iteration"`' + `
-	Total      int     ` + '`json:"total"`' + `
-	OpsPerSec  float64 ` + '`json:"ops_per_sec"`' + `
-	P50Us      float64 ` + '`json:"p50_latency_us"`' + `
-	P99Us      float64 ` + '`json:"p99_latency_us"`' + `
-}
-
-type benchmarkComplete struct {
-	Type             string  ` + '`json:"type"`' + `
-	UserMedianOps    float64 ` + '`json:"user_median_ops"`' + `
-	RefMedianOps     float64 ` + '`json:"reference_median_ops"`' + `
-	NormalizedRatio  float64 ` + '`json:"normalized_ratio"`' + `
-	UserP50Us        float64 ` + '`json:"user_p50_us"`' + `
-	UserP99Us        float64 ` + '`json:"user_p99_us"`' + `
-	RefP50Us         float64 ` + '`json:"ref_p50_us"`' + `
-	RefP99Us         float64 ` + '`json:"ref_p99_us"`' + `
-}
-
-func main() {
-	userDir, err := os.MkdirTemp("", "bench-user-*")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create user tmpdir: %v\\n", err)
-		os.Exit(1)
-	}
-	defer os.RemoveAll(userDir)
-
-	refDir, err := os.MkdirTemp("", "bench-ref-*")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create ref tmpdir: %v\\n", err)
-		os.Exit(1)
-	}
-	defer os.RemoveAll(refDir)
-
-	// Write user code
-	if err := os.WriteFile(filepath.Join(userDir, "main.go"), []byte(userCode), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to write user main.go: %v\\n", err)
-		os.Exit(1)
-	}
-	if err := os.WriteFile(filepath.Join(userDir, "go.mod"), []byte(refGoMod), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to write user go.mod: %v\\n", err)
-		os.Exit(1)
-	}
-
-	// Write reference code
-	if err := os.WriteFile(filepath.Join(refDir, "main.go"), []byte(refCode), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to write ref main.go: %v\\n", err)
-		os.Exit(1)
-	}
-	if err := os.WriteFile(filepath.Join(refDir, "go.mod"), []byte(refGoMod), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "failed to write ref go.mod: %v\\n", err)
-		os.Exit(1)
-	}
-
-	// Compile both
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	userBin := filepath.Join(userDir, "main")
-	refBin := filepath.Join(refDir, "main")
-
-	buildUser := exec.CommandContext(ctx, "go", "build", "-o", userBin, ".")
-	buildUser.Dir = userDir
-	if out, err := buildUser.CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, "user compilation failed: %s\\n%s", err, string(out))
-		os.Exit(1)
-	}
-	buildRef := exec.CommandContext(ctx, "go", "build", "-o", refBin, ".")
-	buildRef.Dir = refDir
-	if out, err := buildRef.CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, "reference compilation failed: %s\\n%s", err, string(out))
-		os.Exit(1)
-	}
-
-	args := fmt.Sprintf("benchmark --ops=%d --key-size=%d --value-size=%d", numOps, keySize, valueSize)
-	benchArgs := strings.Fields(args)
-
-	// Warmup — discard output
-	for w := 0; w < warmupIterations; w++ {
-		runBinary(ctx, userBin, benchArgs)
-		runBinary(ctx, refBin, benchArgs)
-	}
-
-	// Measured iterations
-	totalIters := warmupIterations + measuredIterations
-	var userOps []float64
-	var refOps []float64
-	var userP50s, userP99s, refP50s, refP99s []float64
-
-	for i := 0; i < measuredIterations; i++ {
-		iterNum := i + 1
-
-		// Run user
-		userOut := runBinary(ctx, userBin, benchArgs)
-		userResult := parseIterationLine(userOut)
-		if userResult != nil {
-			userOps = append(userOps, userResult.OpsPerSec)
-			userP50s = append(userP50s, userResult.P50Us)
-			userP99s = append(userP99s, userResult.P99Us)
-			line := iterationResult{
-				Type: "benchmark_iteration", Target: "user",
-				Iteration: iterNum, Total: totalIters,
-				OpsPerSec: userResult.OpsPerSec, P50Us: userResult.P50Us, P99Us: userResult.P99Us,
-			}
-			b, _ := json.Marshal(line)
-			fmt.Println(string(b))
-		}
-
-		// Run reference
-		refOut := runBinary(ctx, refBin, benchArgs)
-		refResult := parseIterationLine(refOut)
-		if refResult != nil {
-			refOps = append(refOps, refResult.OpsPerSec)
-			refP50s = append(refP50s, refResult.P50Us)
-			refP99s = append(refP99s, refResult.P99Us)
-			line := iterationResult{
-				Type: "benchmark_iteration", Target: "reference",
-				Iteration: iterNum, Total: totalIters,
-				OpsPerSec: refResult.OpsPerSec, P50Us: refResult.P50Us, P99Us: refResult.P99Us,
-			}
-			b, _ := json.Marshal(line)
-			fmt.Println(string(b))
-		}
-	}
-
-	// Compute summary
-	userMedian := median(userOps)
-	refMedian := median(refOps)
-	ratio := 0.0
-	if refMedian > 0 {
-		ratio = math.Round(userMedian/refMedian*10000) / 10000
-	}
-
-	complete := benchmarkComplete{
-		Type: "benchmark_complete",
-		UserMedianOps: math.Round(userMedian*100) / 100,
-		RefMedianOps: math.Round(refMedian*100) / 100,
-		NormalizedRatio: ratio,
-		UserP50Us: math.Round(median(userP50s)*100) / 100,
-		UserP99Us: math.Round(median(userP99s)*100) / 100,
-		RefP50Us: math.Round(median(refP50s)*100) / 100,
-		RefP99Us: math.Round(median(refP99s)*100) / 100,
-	}
-	b, _ := json.Marshal(complete)
-	fmt.Println(string(b))
-}
-
-func runBinary(ctx context.Context, binPath string, args []string) string {
-	cmd := exec.CommandContext(ctx, binPath, args...)
-	cmd.Dir = filepath.Dir(binPath)
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
-func parseIterationLine(output string) *iterationResult {
-	if output == "" {
-		return nil
-	}
-	var result iterationResult
-	for _, line := range strings.Split(output, "\\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if err := json.Unmarshal([]byte(line), &result); err == nil && result.Type == "benchmark_iteration" {
-			return &result
-		}
-	}
-	return nil
-}
-
-func median(vals []float64) float64 {
-	if len(vals) == 0 {
-		return 0
-	}
-	sorted := make([]float64, len(vals))
-	copy(sorted, vals)
-	sort.Float64s(sorted)
-	mid := len(sorted) / 2
-	if len(sorted)%2 == 0 {
-		return (sorted[mid-1] + sorted[mid]) / 2
-	}
-	return sorted[mid]
-}
-`
-
-  // Estimate timeout: warmup + measured iterations, each running 2 binaries
-  // Allow ~30s per binary run + compilation buffer
-  const estimatedTimePerBinaryRunSec = 5
-  const compilationBufferSec = 60
-  const timeoutSeconds = compilationBufferSec + (warmup + iterations) * 2 * estimatedTimePerBinaryRunSec
-
-  const base64HarnessCode = Buffer.from(harnessCode).toString('base64')
-
-  logger.info({ submissionId: opts.submissionId, benchmarkName: benchmark.name, timeoutSeconds }, 'benchmark_execution_starting')
-
-  const response = await executionClient.execute({
-    code: base64HarnessCode,
-    args: [],
+  // User execution
+  const userResponse = await executionClient.execute({
+    files: encodeFiles(userFiles),
+    args: benchArgs,
     timeoutSeconds,
   })
 
-  if (response.timedOut) {
-    logger.warn({ submissionId: opts.submissionId, benchmarkName: benchmark.name }, 'benchmark_execution_timed_out')
-    return ''
+  const userStdout = (!userResponse.timedOut && userResponse.exitCode === 0) ? userResponse.stdout : ''
+  if (userResponse.timedOut || userResponse.exitCode !== 0) {
+    logger.warn({ submissionId: opts.submissionId, benchmarkName: benchmark.name, target: 'user', exitCode: userResponse.exitCode, timedOut: userResponse.timedOut }, 'benchmark_user_execution_failed')
   }
 
-  if (response.exitCode !== 0) {
-    logger.warn({ submissionId: opts.submissionId, benchmarkName: benchmark.name, exitCode: response.exitCode, stderr: response.stderr }, 'benchmark_execution_failed')
-    return ''
+  // Reference execution
+  const refResponse = await executionClient.execute({
+    files: encodeFiles(referenceFiles),
+    args: benchArgs,
+    timeoutSeconds,
+  })
+
+  const refStdout = (!refResponse.timedOut && refResponse.exitCode === 0) ? refResponse.stdout : ''
+  if (refResponse.timedOut || refResponse.exitCode !== 0) {
+    logger.warn({ submissionId: opts.submissionId, benchmarkName: benchmark.name, target: 'reference', exitCode: refResponse.exitCode, timedOut: refResponse.timedOut }, 'benchmark_ref_execution_failed')
   }
 
-  return response.stdout
+  return { userStdout, refStdout }
 }
 
 export function createExecutionProcessor(
@@ -332,7 +109,7 @@ export function createExecutionProcessor(
   const executeBenchmark = deps.runBenchmark ?? runBenchmarkOnService
 
   return async (job: ExecutionJob): Promise<void> => {
-    const { submissionId, milestoneId, code, userId } = job.data
+    const { submissionId, milestoneId, userId } = job.data
     const startTime = Date.now()
     let sequenceId = 1
 
@@ -374,20 +151,56 @@ export function createExecutionProcessor(
         sequenceId: sequenceId++,
       })
 
+      // Early-branch: determine if multi-file or single-file submission
+      const submittedFiles = job.data.files ?? null
+      const isMultiFile = submittedFiles !== null
+      const code = job.data.code
+
       // Validate code size (defense in depth — Go server also validates)
-      const codeBytes = Buffer.byteLength(code, 'utf8')
-      if (codeBytes > MAX_CODE_SIZE_BYTES) {
-        await eventPublisher.publish(submissionId, {
-          type: 'error',
-          phase: 'preparing',
-          message: 'Code exceeds maximum size limit (64KB)',
-          isUserError: true,
-          data: '',
-          sequenceId: sequenceId++,
-        })
+      if (isMultiFile) {
+        const totalSize = Object.values(submittedFiles).reduce((sum, content) => sum + Buffer.byteLength(content, 'utf8'), 0)
+        if (totalSize > MAX_CODE_SIZE_BYTES) {
+          await eventPublisher.publish(submissionId, {
+            type: 'error',
+            phase: 'preparing',
+            message: 'Code exceeds maximum size limit (128KB)',
+            isUserError: true,
+            data: '',
+            sequenceId: sequenceId++,
+          })
+          await db
+            .updateTable('submissions')
+            .set({ status: 'failed', error_message: 'Code exceeds maximum size limit (128KB)', updated_at: new Date() })
+            .where('id', '=', submissionId)
+            .execute()
+          await eventPublisher.setLogTTL(submissionId, 300)
+          return
+        }
+      } else if (code) {
+        const codeBytes = Buffer.byteLength(code, 'utf8')
+        if (codeBytes > MAX_CODE_SIZE_BYTES) {
+          await eventPublisher.publish(submissionId, {
+            type: 'error',
+            phase: 'preparing',
+            message: 'Code exceeds maximum size limit (128KB)',
+            isUserError: true,
+            data: '',
+            sequenceId: sequenceId++,
+          })
+          await db
+            .updateTable('submissions')
+            .set({ status: 'failed', error_message: 'Code exceeds maximum size limit (128KB)', updated_at: new Date() })
+            .where('id', '=', submissionId)
+            .execute()
+          await eventPublisher.setLogTTL(submissionId, 300)
+          return
+        }
+      } else {
+        // Neither code nor files — should not happen
+        logger.error({ submissionId }, 'submission_has_neither_code_nor_files')
         await db
           .updateTable('submissions')
-          .set({ status: 'failed', error_message: 'Code exceeds maximum size limit (64KB)', updated_at: new Date() })
+          .set({ status: 'failed', error_message: 'No code or files provided', updated_at: new Date() })
           .where('id', '=', submissionId)
           .execute()
         await eventPublisher.setLogTTL(submissionId, 300)
@@ -424,14 +237,42 @@ export function createExecutionProcessor(
         }
       }
 
-      // Base64-encode user code and call the execution service
-      const base64Code = Buffer.from(code).toString('base64')
+      // Assemble files and call execution service
       const timeoutSeconds = defaultTimeoutSeconds
-      const response = await executionClient.execute({
-        code: base64Code,
-        args: commandArgs ? [commandArgs] : [],
-        timeoutSeconds,
-      })
+      let response: Awaited<ReturnType<typeof executionClient.execute>>
+
+      if (isMultiFile) {
+        // Multi-file path: merge editable files from submission with read-only starter files
+        let allFiles: Record<string, string> = {}
+        if (milestoneSlug) {
+          const starterFiles = await contentLoader.loadStarterFiles(milestoneSlug)
+          if (starterFiles) {
+            allFiles = { ...starterFiles }
+          }
+        }
+        // Learner's editable files override starter files by filename
+        Object.assign(allFiles, submittedFiles)
+
+        // Base64-encode each file for the Go server
+        const encodedFiles: Record<string, string> = {}
+        for (const [name, content] of Object.entries(allFiles)) {
+          encodedFiles[name] = Buffer.from(content).toString('base64')
+        }
+
+        response = await executionClient.execute({
+          files: encodedFiles,
+          args: commandArgs ? [commandArgs] : [],
+          timeoutSeconds,
+        })
+      } else {
+        // Single-file path (M1 backward compat)
+        const base64Code = Buffer.from(code ?? '').toString('base64')
+        response = await executionClient.execute({
+          code: base64Code,
+          args: commandArgs ? [commandArgs] : [],
+          timeoutSeconds,
+        })
+      }
 
       const durationMs = Date.now() - startTime
 
@@ -519,52 +360,64 @@ export function createExecutionProcessor(
           const benchmarkConfig = await contentLoader.loadBenchmarkConfig(milestoneSlug)
           if (benchmarkConfig && benchmarkConfig.benchmarks.length > 0) {
             // Load reference implementation files
-            const contentBase = resolve(process.cwd(), '..', '..', 'content', 'milestones', milestoneSlug, 'reference-impl')
-            let referenceMainGo: string | null = null
-            let referenceGoMod: string | null = null
-            try {
-              referenceMainGo = await readFile(join(contentBase, 'main.go'), 'utf-8')
-              referenceGoMod = await readFile(join(contentBase, 'go.mod'), 'utf-8')
-            } catch (refErr) {
-              logger.warn({ err: refErr instanceof Error ? refErr : new Error(String(refErr)), milestoneSlug }, 'reference_impl_not_found_skipping_benchmark')
-            }
+            const referenceFiles = await contentLoader.loadReferenceFiles(milestoneSlug)
 
-            if (referenceMainGo && referenceGoMod) {
+            if (referenceFiles) {
+              // Assemble user files for benchmark
+              let userFiles: Record<string, string>
+              if (isMultiFile) {
+                userFiles = {}
+                const starterFiles = await contentLoader.loadStarterFiles(milestoneSlug)
+                if (starterFiles) {
+                  Object.assign(userFiles, starterFiles)
+                }
+                Object.assign(userFiles, submittedFiles)
+              } else {
+                userFiles = { 'main.go': code ?? '' }
+              }
+
               for (const benchmark of benchmarkConfig.benchmarks) {
-                const warmup = benchmark.warmupIterations ?? 2
-                const iterations = benchmark.measuredIterations ?? 10
-                const totalIterations = warmup + iterations
-
                 await eventPublisher.publish(submissionId, {
                   type: 'benchmark_progress',
                   phase: 'benchmarking',
                   iteration: 0,
-                  total: totalIterations,
+                  total: 1,
                   data: `Starting benchmark: ${benchmark.name}`,
                   sequenceId: sequenceId++,
                 })
 
-                const benchmarkStdout = await executeBenchmark({
+                const { userStdout, refStdout } = await executeBenchmark({
                   executionClient,
-                  code, submissionId, milestoneId,
-                  referenceMainGo, referenceGoMod,
-                  benchmark, warmup, iterations,
+                  userFiles, referenceFiles,
+                  submissionId, milestoneId,
+                  benchmark,
                   logger,
                 })
 
-                const result = parseBenchmarkOutput(benchmarkStdout, benchmark.name)
+                // Parse and compute normalized ratio from the two-call results
+                const userResult = parseBenchmarkOutput(userStdout, benchmark.name)
+                const refResult = parseBenchmarkOutput(refStdout, benchmark.name)
                 const referenceVersion = benchmark.referenceVersion ?? 'unknown'
 
-                if (result.rawUserTimings.length > 0) {
-                  benchmarkRunResult = result
+                if (userResult.rawUserTimings.length > 0) {
+                  // Override reference values from the ref call
+                  const normalizedRatio = refResult.opsPerSec > 0
+                    ? Math.round((userResult.opsPerSec / refResult.opsPerSec) * 10000) / 10000
+                    : 0
+                  const merged: BenchmarkRunResult = {
+                    ...userResult,
+                    referenceMedian: refResult.opsPerSec,
+                    normalizedRatio,
+                  }
+                  benchmarkRunResult = merged
 
                   await eventPublisher.publish(submissionId, {
                     type: 'benchmark_result',
                     phase: 'benchmarking',
-                    userMedian: result.userMedian,
-                    referenceMedian: result.referenceMedian,
-                    normalizedRatio: result.normalizedRatio,
-                    opsPerSec: result.opsPerSec,
+                    userMedian: merged.userMedian,
+                    referenceMedian: merged.referenceMedian,
+                    normalizedRatio: merged.normalizedRatio,
+                    opsPerSec: merged.opsPerSec,
                     data: '',
                     sequenceId: sequenceId++,
                   })
@@ -574,7 +427,7 @@ export function createExecutionProcessor(
                     userId,
                     milestoneId,
                     benchmarkName: benchmark.name,
-                    result,
+                    result: merged,
                     referenceVersion,
                   })
                 } else {

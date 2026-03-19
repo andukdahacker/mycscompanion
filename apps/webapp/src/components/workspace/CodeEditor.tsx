@@ -14,7 +14,24 @@ type MonacoEditor = Parameters<OnMount>[0]
 
 function CodeEditor({ initialContent, onRun }: CodeEditorProps): React.ReactElement {
   const setContent = useEditorStore((s) => s.setContent)
+  const activeFile = useEditorStore((s) => s.activeFile)
+  const files = useEditorStore((s) => s.files)
+  const editableFiles = useEditorStore((s) => s.editableFiles)
   const editorRef = useRef<MonacoEditor | null>(null)
+
+  // Determine if current file is read-only
+  const isReadOnly = editableFiles.length > 0 && !editableFiles.includes(activeFile)
+
+  // Update Monaco value when active file changes
+  const prevActiveFileRef = useRef(activeFile)
+  useEffect(() => {
+    if (prevActiveFileRef.current !== activeFile && editorRef.current) {
+      const newContent = files[activeFile] ?? ''
+      editorRef.current.getModel()?.setValue(newContent)
+      editorRef.current.updateOptions({ readOnly: isReadOnly })
+    }
+    prevActiveFileRef.current = activeFile
+  }, [activeFile, files, isReadOnly])
 
   // Ref to avoid stale closure in Monaco addCommand handlers.
   // onMount is called ONCE by @monaco-editor/react — if onRun changes
@@ -87,6 +104,7 @@ function CodeEditor({ initialContent, onRun }: CodeEditorProps): React.ReactElem
         onMount={handleMount}
         loading={<CodeEditorSkeleton />}
         options={{
+          readOnly: isReadOnly,
           accessibilitySupport: 'on',
           fontSize: 14,
           fontFamily: "'JetBrains Mono', 'Fira Code', 'SF Mono', 'Cascadia Code', monospace",

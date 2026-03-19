@@ -26,13 +26,14 @@ export async function milestoneRoutes(fastify: FastifyInstance, opts: MilestoneR
       })
     }
 
-    const [brief, acceptanceCriteria, benchmarkConfig, conceptExplainerAssets, starterCode, metadata] =
+    const [brief, acceptanceCriteria, benchmarkConfig, conceptExplainerAssets, starterCode, starterFiles, metadata] =
       await Promise.all([
         contentLoader.loadMilestoneBrief(milestone.slug),
         contentLoader.loadAcceptanceCriteria(milestone.slug),
         contentLoader.loadBenchmarkConfig(milestone.slug),
         contentLoader.listConceptExplainerAssets(milestone.slug),
         contentLoader.loadStarterCode(milestone.slug),
+        contentLoader.loadStarterFiles(milestone.slug),
         contentLoader.loadMetadata(milestone.slug),
       ])
 
@@ -47,6 +48,8 @@ export async function milestoneRoutes(fastify: FastifyInstance, opts: MilestoneR
       benchmarkConfig,
       conceptExplainerAssets,
       starterCode,
+      starterFiles: starterFiles ?? (starterCode ? { 'main.go': starterCode } : null),
+      editableFiles: metadata.editableFiles ?? null,
       csConceptLabel: metadata.csConceptLabel,
       stuckDetection: metadata.stuckDetection,
     }

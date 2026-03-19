@@ -30,6 +30,7 @@ export interface StuckDetectionMetadata {
 export interface MilestoneMetadata {
   readonly csConceptLabel: string | null
   readonly stuckDetection: StuckDetectionMetadata | null
+  readonly editableFiles: readonly string[] | null
 }
 
 export interface ContentLoader {
@@ -39,6 +40,8 @@ export interface ContentLoader {
   listConceptExplainerAssets(slug: string): Promise<readonly ConceptExplainerAsset[]>
   getStarterCodePath(slug: string): Promise<string | null>
   loadStarterCode(slug: string): Promise<string | null>
+  loadStarterFiles(slug: string): Promise<Record<string, string> | null>
+  loadReferenceFiles(slug: string): Promise<Record<string, string> | null>
   loadMetadata(slug: string): Promise<MilestoneMetadata>
   invalidateCache(slug: string): Promise<void>
   invalidateAllCaches(): Promise<void>
@@ -63,10 +66,12 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
     conceptExplainerAssets: readonly ConceptExplainerAsset[]
     starterCodePath: string | null
     starterCode: string | null
+    starterFiles: Record<string, string> | null
+    referenceFiles: Record<string, string> | null
     metadata: MilestoneMetadata
   }
 
-  const emptyMetadata: MilestoneMetadata = { csConceptLabel: null, stuckDetection: null }
+  const emptyMetadata: MilestoneMetadata = { csConceptLabel: null, stuckDetection: null, editableFiles: null }
 
   const emptyCachedContent: CachedMilestoneContent = {
     brief: null,
@@ -75,6 +80,8 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
     conceptExplainerAssets: [],
     starterCodePath: null,
     starterCode: null,
+    starterFiles: null,
+    referenceFiles: null,
     metadata: emptyMetadata,
   }
 
@@ -85,10 +92,16 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
 
     const cached = await redis.get(cacheKey(slug))
     if (cached) {
-      return JSON.parse(cached) as CachedMilestoneContent
+      const parsed = JSON.parse(cached) as CachedMilestoneContent
+      // Handle deserialized cached entries missing new fields (cache from before multi-file support)
+      if (parsed.starterFiles === undefined || parsed.referenceFiles === undefined) {
+        await redis.del(cacheKey(slug))
+      } else {
+        return parsed
+      }
     }
 
-    const [brief, acceptanceCriteria, benchmarkConfig, conceptExplainerAssets, starterCodePath, starterCode, metadata] =
+    const [brief, acceptanceCriteria, benchmarkConfig, conceptExplainerAssets, starterCodePath, starterCode, starterFiles, referenceFiles, metadata] =
       await Promise.all([
         readBrief(slug),
         readAcceptanceCriteria(slug),
@@ -96,6 +109,8 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
         readConceptExplainerAssets(slug),
         readStarterCodePath(slug),
         readStarterCode(slug),
+        readGoFiles(slug, 'starter-code'),
+        readGoFiles(slug, 'reference-impl'),
         readMetadata(slug),
       ])
 
@@ -106,6 +121,8 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
       conceptExplainerAssets,
       starterCodePath,
       starterCode,
+      starterFiles,
+      referenceFiles,
       metadata,
     }
 
@@ -231,12 +248,36 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
     }
   }
 
+  async function readGoFiles(slug: string, subdir: string): Promise<Record<string, string> | null> {
+    try {
+      const dir = join(milestoneDir(slug), subdir)
+      const files = await readdir(dir)
+      const goFiles = files.filter((f) => f.endsWith('.go') || f === 'go.mod')
+      if (goFiles.length === 0) {
+        return null
+      }
+      const entries = await Promise.all(
+        goFiles.map(async (name) => {
+          const content = await readFile(join(dir, name), 'utf-8')
+          return [name, content] as const
+        }),
+      )
+      return Object.fromEntries(entries)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        log?.error({ slug, subdir, error: String(err) }, 'Failed to read Go files')
+      }
+      return null
+    }
+  }
+
   async function readMetadata(slug: string): Promise<MilestoneMetadata> {
     try {
       const raw = await readFile(join(milestoneDir(slug), 'metadata.yaml'), 'utf-8')
       const parsed = yaml.load(raw) as {
         csConceptLabel?: string
         stuckDetection?: { thresholdMinutes?: number; stage2OffsetSeconds?: number }
+        editableFiles?: string[]
       } | null
 
       const stuckRaw = parsed?.stuckDetection
@@ -248,6 +289,7 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
       return {
         csConceptLabel: parsed?.csConceptLabel ?? null,
         stuckDetection,
+        editableFiles: Array.isArray(parsed?.editableFiles) ? parsed.editableFiles : null,
       }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
@@ -286,6 +328,16 @@ export function createContentLoader(opts: ContentLoaderOptions): ContentLoader {
     async loadStarterCode(slug: string): Promise<string | null> {
       const content = await loadAndCache(slug)
       return content.starterCode
+    },
+
+    async loadStarterFiles(slug: string): Promise<Record<string, string> | null> {
+      const content = await loadAndCache(slug)
+      return content.starterFiles ?? null
+    },
+
+    async loadReferenceFiles(slug: string): Promise<Record<string, string> | null> {
+      const content = await loadAndCache(slug)
+      return content.referenceFiles ?? null
     },
 
     async loadMetadata(slug: string): Promise<MilestoneMetadata> {

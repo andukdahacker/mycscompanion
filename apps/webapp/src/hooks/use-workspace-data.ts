@@ -12,6 +12,9 @@ interface WorkspaceData {
   readonly stuckDetection: StuckDetectionConfig
   readonly conceptExplainerAssets: readonly ConceptExplainerAsset[]
   readonly starterCode: string
+  readonly starterFiles: Record<string, string> | null
+  readonly editableFiles: readonly string[] | null
+  readonly restoredFiles: Record<string, string> | null
   readonly restoredCriteria: ReadonlyArray<CriterionResult> | null
   readonly restoredSubmissionId: string | null
 }
@@ -40,12 +43,20 @@ function useWorkspaceData(milestoneId: string | undefined) {
       const starterCode = content.starterCode ?? DEFAULT_GO_TEMPLATE
       const initialContent = resumeData.latestSnapshot?.code ?? starterCode
 
+      // Multi-file: determine restored files from snapshot or starter files
+      const restoredFiles = resumeData.latestSnapshot?.files ?? null
+      const starterFiles = content.starterFiles ?? null
+      const editableFiles = content.editableFiles ?? null
+
       return {
         milestoneName: content.title,
         milestoneNumber: content.position,
         progress: 0, // Computed from criteria in Workspace.tsx
         initialContent,
         starterCode,
+        starterFiles,
+        editableFiles,
+        restoredFiles,
         brief: content.brief,
         criteria: content.acceptanceCriteria,
         stuckDetection: content.stuckDetection ?? { thresholdMinutes: 10, stage2OffsetSeconds: 60 },

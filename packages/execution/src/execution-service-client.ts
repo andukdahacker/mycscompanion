@@ -4,7 +4,8 @@
  */
 
 export type ExecuteRequest = Readonly<{
-  code: string       // base64-encoded Go source
+  code?: string       // base64-encoded Go source (single-file M1 path)
+  files?: Record<string, string>  // filename → base64-encoded content (multi-file path)
   args: string[]
   timeoutSeconds: number
 }>
@@ -50,7 +51,8 @@ export class ExecutionServiceClient {
         'Authorization': `Bearer ${this.secret}`,
       },
       body: JSON.stringify({
-        code: request.code,
+        ...(request.code !== undefined ? { code: request.code } : {}),
+        ...(request.files !== undefined ? { files: request.files } : {}),
         args: request.args,
         timeout_seconds: request.timeoutSeconds,
       }),

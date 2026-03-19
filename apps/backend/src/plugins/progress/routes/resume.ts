@@ -23,7 +23,7 @@ async function resumeRoutes(
       const [snapshot, submission] = await Promise.all([
         db
           .selectFrom('code_snapshots')
-          .select(['id', 'code', 'created_at'])
+          .select(['id', 'code', 'files', 'created_at'])
           .where('user_id', '=', userId)
           .where('milestone_id', '=', milestoneId)
           .orderBy('created_at', 'desc')
@@ -44,7 +44,8 @@ async function resumeRoutes(
         latestSnapshot: snapshot
           ? {
               id: snapshot.id,
-              code: snapshot.code,
+              code: snapshot.code ?? null,
+              files: (snapshot.files ?? null) as Record<string, string> | null,
               createdAt: new Date(snapshot.created_at).toISOString(),
             }
           : null,

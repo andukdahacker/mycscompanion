@@ -6,7 +6,8 @@ export const EXECUTION_QUEUE_NAME = 'execution-run'
 export type ExecutionJobData = {
   readonly submissionId: string
   readonly milestoneId: string
-  readonly code: string
+  readonly code?: string
+  readonly files?: Record<string, string>
   readonly userId: string
 }
 

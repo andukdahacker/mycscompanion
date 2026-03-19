@@ -11,7 +11,8 @@ import type { OutputLine } from '../components/workspace/TerminalPanel'
 
 interface SubmitCodeParams {
   readonly milestoneId: string
-  readonly code: string
+  readonly code?: string
+  readonly files?: Record<string, string>
 }
 
 interface BenchmarkResultData {
@@ -51,7 +52,10 @@ function useSubmitCode(): UseSubmitCodeResult {
     mutationFn: (params: SubmitCodeParams) =>
       apiFetch<{ submissionId: string }>('/api/execution/submit', {
         method: 'POST',
-        body: JSON.stringify({ milestoneId: params.milestoneId, code: params.code }),
+        body: JSON.stringify({
+          milestoneId: params.milestoneId,
+          ...(params.files ? { files: params.files } : { code: params.code }),
+        }),
       }),
     onSuccess: (data) => {
       submissionIdRef.current = data.submissionId

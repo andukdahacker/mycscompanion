@@ -127,6 +127,8 @@ export interface MilestoneContent {
   readonly benchmarkConfig: BenchmarkConfig | null
   readonly conceptExplainerAssets: readonly ConceptExplainerAsset[]
   readonly starterCode: string | null
+  readonly starterFiles: Record<string, string> | null
+  readonly editableFiles: readonly string[] | null
   readonly csConceptLabel: string | null
   readonly stuckDetection: StuckDetectionConfig | null
 }

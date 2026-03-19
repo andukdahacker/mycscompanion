@@ -103,10 +103,20 @@ export function createStuckContextAssembler(opts: StuckContextAssemblerOptions):
     return firstUnmet?.name ?? '(all criteria met)'
   }
 
+  function snapshotToText(snapshot: { code: string | null; files?: unknown }): string {
+    if (snapshot.files && typeof snapshot.files === 'object' && !Array.isArray(snapshot.files)) {
+      const files = snapshot.files as Record<string, string>
+      return Object.entries(files)
+        .map(([name, content]) => `// === ${name} ===\n${content}`)
+        .join('\n\n')
+    }
+    return snapshot.code ?? ''
+  }
+
   async function computeRecentDiffs(userId: string, milestoneId: string): Promise<string> {
     const snapshots = await db
       .selectFrom('code_snapshots')
-      .select(['code', 'created_at'])
+      .select(['code', 'files', 'created_at'])
       .where('user_id', '=', userId)
       .where('milestone_id', '=', milestoneId)
       .orderBy('created_at', 'desc')
@@ -119,8 +129,8 @@ export function createStuckContextAssembler(opts: StuckContextAssemblerOptions):
     const previousSnapshot = snapshots[1]
     if (!currentSnapshot || !previousSnapshot) return '(No previous snapshot for comparison)'
 
-    const current = currentSnapshot.code.split('\n')
-    const previous = previousSnapshot.code.split('\n')
+    const current = snapshotToText(currentSnapshot).split('\n')
+    const previous = snapshotToText(previousSnapshot).split('\n')
     const added = current.filter((line) => !previous.includes(line))
     const removed = previous.filter((line) => !current.includes(line))
 

@@ -62,7 +62,8 @@ export interface CompleteMilestoneResponse {
 export interface ResumeData {
   readonly latestSnapshot: {
     readonly id: string
-    readonly code: string
+    readonly code: string | null
+    readonly files: Record<string, string> | null
     readonly createdAt: string
   } | null
   readonly lastSubmissionId: string | null

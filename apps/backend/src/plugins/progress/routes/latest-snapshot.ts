@@ -22,7 +22,7 @@ async function latestSnapshotRoutes(
 
       const snapshot = await db
         .selectFrom('code_snapshots')
-        .select(['id', 'code', 'created_at'])
+        .select(['id', 'code', 'files', 'created_at'])
         .where('user_id', '=', userId)
         .where('milestone_id', '=', milestoneId)
         .orderBy('created_at', 'desc')
@@ -33,7 +33,10 @@ async function latestSnapshotRoutes(
         return { snapshot: null }
       }
 
-      return { snapshot: toCamelCase(snapshot) }
+      // Extract files before toCamelCase to preserve filename keys (e.g., "main.go")
+      const { files: rawFiles, ...rest } = snapshot
+      const files = typeof rawFiles === 'string' ? JSON.parse(rawFiles) : (rawFiles ?? null)
+      return { snapshot: { ...toCamelCase(rest), files } }
     }
   )
 }

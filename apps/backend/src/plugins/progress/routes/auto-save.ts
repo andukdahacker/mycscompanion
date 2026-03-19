@@ -5,7 +5,8 @@ import { generateId } from '../../../shared/id.js'
 
 interface AutoSaveBody {
   readonly milestoneId: string
-  readonly code: string
+  readonly code?: string
+  readonly files?: Record<string, string>
 }
 
 interface AutoSaveRoutesOptions {
@@ -15,12 +16,15 @@ interface AutoSaveRoutesOptions {
 const autoSaveBodySchema = {
   body: {
     type: 'object',
-    required: ['milestoneId', 'code'],
+    required: ['milestoneId'],
     properties: {
       milestoneId: { type: 'string', minLength: 1 },
       code: { type: 'string' },
+      files: {
+        type: 'object',
+        additionalProperties: { type: 'string' },
+      },
     },
-    additionalProperties: false,
   },
 } as const
 
@@ -31,8 +35,13 @@ async function autoSaveRoutes(
   const { db } = opts
 
   // POST /api/progress/save
-  fastify.post<{ Body: AutoSaveBody }>('/save', { schema: autoSaveBodySchema }, async (request) => {
-    const { milestoneId, code } = request.body
+  fastify.post<{ Body: AutoSaveBody }>('/save', { schema: autoSaveBodySchema }, async (request, reply) => {
+    const { milestoneId, code, files } = request.body
+
+    if (!code && !files) {
+      reply.code(400)
+      return { error: { code: 'VALIDATION_ERROR', message: 'Either code or files is required' } }
+    }
     const userId = request.uid
 
     // Find or create active session
@@ -67,7 +76,8 @@ async function autoSaveRoutes(
         user_id: userId,
         milestone_id: milestoneId,
         session_id: session.id,
-        code,
+        code: files ? null : (code ?? null),
+        files: files ? JSON.stringify(files) : null,
       })
       .execute()
 
