@@ -1,4 +1,34 @@
 milestone: 02-storage-engine
 
-benchmarks: []
-# Benchmark configuration will be authored when this milestone is developed.
+benchmarks:
+  - name: sequential-inserts-wal
+    description: >
+      Sequential insertion of 1,000 key-value pairs via WAL append.
+      Measures write throughput with per-entry fsync for durability.
+      Target: 10x improvement over M1's full-rewrite approach.
+    warmup_iterations: 2
+    measured_iterations: 10
+    workload:
+      type: inserts
+      num_operations: 1000
+      key_size_bytes: 16
+      value_size_bytes: 64
+    target_metrics:
+      ops_per_sec: 300
+    reference_version: milestone-2-v1
+
+  - name: crash-recovery-replay
+    description: >
+      Replay 50,000 WAL entries on store startup. Measures sequential
+      read throughput of the binary WAL format. Validates replay
+      implementation is not accidentally quadratic.
+    warmup_iterations: 1
+    measured_iterations: 5
+    workload:
+      type: inserts
+      num_operations: 50000
+      key_size_bytes: 16
+      value_size_bytes: 64
+    target_metrics:
+      ops_per_sec: 50000
+    reference_version: milestone-2-v1

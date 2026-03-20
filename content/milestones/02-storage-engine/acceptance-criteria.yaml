@@ -1,4 +1,132 @@
 milestone: 02-storage-engine
 
-criteria: []
-# Acceptance criteria will be authored when this milestone is developed.
+criteria:
+  - name: kv-baseline
+    order: 1
+    description: M1 KVStore tests pass against provided kv.go reference.
+    assertion:
+      type: stdout-contains
+      expected: "PASS: kv-baseline"
+      command_args: test
+    error_hint: >
+      This test uses the provided kv.go (M1 reference). If it fails,
+      something may have changed in kv.go. It should be untouched.
+
+  - name: wal-append
+    order: 2
+    description: Put writes a log entry and Get retrieves it.
+    assertion:
+      type: stdout-contains
+      expected: "PASS: wal-append"
+      command_args: test
+    error_hint: >
+      Check that Put stores the key in the data map AND calls
+      appendEntry to write the WAL record.
+
+  - name: wal-format
+    order: 3
+    description: WAL entries use the correct binary record format.
+    assertion:
+      type: stdout-contains
+      expected: "PASS: wal-format"
+      command_args: test
+    error_hint: >
+      The WAL record format is: [op_type:1 byte][key_len:4 bytes][val_len:4 bytes][key bytes][value bytes].
+      Check that you're writing the op byte first, then lengths as BigEndian uint32.
+
+  - name: delete-via-wal
+    order: 4
+    description: Delete appends a tombstone entry to the WAL.
+    assertion:
+      type: stdout-contains
+      expected: "PASS: delete-via-wal"
+      command_args: test
+    error_hint: >
+      Delete should remove the key from the in-memory map AND append
+      a WAL entry with opDelete (0x02). The value can be empty.
+
+  - name: crash-recovery
+    order: 5
+    description: Data survives unclean shutdown via WAL replay.
+    assertion:
+      type: stdout-contains
+      expected: "PASS: crash-recovery"
+      command_args: test
+    error_hint: >
+      This test does NOT call Close() before reopening the store.
+      Your Put/Delete must call walFile.Sync() after every append
+      so data reaches disk immediately, not just on close.
+
+  - name: replay-ordering
+    order: 6
+    description: WAL replay applies entries in chronological order.
+    assertion:
+      type: stdout-contains
+      expected: "PASS: replay-ordering"
+      command_args: test
+    error_hint: >
+      Replay must process entries from start to end. If the same key
+      is written multiple times, the last write wins. If it's deleted
+      then re-written, the final value should be present.
+
+  - name: compaction
+    order: 7
+    description: Post-compaction, WAL is reset and data remains correct.
+    assertion:
+      type: stdout-contains
+      expected: "PASS: compaction"
+      command_args: test
+    error_hint: >
+      Compact should create a new WAL containing only live entries
+      (one Put per key in the data map). After compaction, closing
+      and reopening the store should recover all live data. New writes
+      after compaction should also survive a reopen.
+
+  - name: post-compaction-reads
+    order: 8
+    description: All data accessible after compaction with many keys.
+    assertion:
+      type: stdout-contains
+      expected: "PASS: post-compaction-reads"
+      command_args: test
+    error_hint: >
+      This test puts 100 keys, deletes 50, compacts, then verifies
+      the remaining 50 are still readable and the deleted 50 are gone.
+
+  - name: performance-improvement
+    order: 9
+    description: Sequential inserts significantly faster than M1 approach.
+    assertion:
+      type: stdout-contains
+      expected: "PASS: performance-improvement"
+      command_args: test
+    error_hint: >
+      WAL append should be much faster than M1's full rewrite.
+      If your ops/sec is below 300, check that you're appending
+      to the file (not rewriting it) and not calling Sync too often
+      in the wrong place.
+
+  - name: exit-clean
+    order: 10
+    description: Program exits with code 0 after all tests pass.
+    assertion:
+      type: exit-code-equals
+      expected: 0
+      command_args: test
+    error_hint: >
+      If any test calls os.Exit(1) or panics, the exit code will be
+      non-zero. Check that all previous tests pass without crashing.
+
+  - name: partial-write-safety
+    order: 11
+    description: Incomplete WAL entry at tail does not corrupt store (stretch).
+    assertion:
+      type: stdout-contains
+      expected: "PASS: partial-write-safety"
+      command_args: test
+    error_hint: >
+      Your replayWAL must handle truncated records gracefully. When
+      io.ReadFull or binary.Read returns io.ErrUnexpectedEOF, stop
+      replay (break) instead of returning an error. Earlier valid
+      entries are safe. Advanced: use hash/crc32 to checksum records
+      for even stronger corruption detection.

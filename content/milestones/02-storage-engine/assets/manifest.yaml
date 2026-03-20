@@ -1,0 +1,6 @@
+- filename: wal-append-flow.svg
+  altText: "Diagram showing how Put and Delete operations append binary records to the write-ahead log file"
+  title: "WAL Append Flow"
+- filename: crash-recovery-sequence.svg
+  altText: "Sequence diagram showing how data survives a crash through WAL replay on startup"
+  title: "Crash Recovery Sequence"
