@@ -80,29 +80,60 @@ describe('ContentLoader integration', () => {
     })
   })
 
-  describe('02-05 milestones (placeholder content)', () => {
-    it('should handle empty criteria arrays gracefully', async () => {
+  describe('02-storage-engine (fully authored milestone)', () => {
+    it('should load acceptance criteria with camelCase keys', async () => {
       const criteria = await loader.loadAcceptanceCriteria('02-storage-engine')
+      expect(criteria.length).toBeGreaterThan(0)
+      expect(criteria[0]!.name).toBeDefined()
+      expect(criteria[0]!.assertion).toBeDefined()
+    })
+
+    it('should load benchmark config', async () => {
+      const config = await loader.loadBenchmarkConfig('02-storage-engine')
+      expect(config).not.toBeNull()
+      expect(config!.benchmarks.length).toBeGreaterThan(0)
+    })
+
+    it('should return starterCodePath for authored milestone', async () => {
+      const path = await loader.getStarterCodePath('02-storage-engine')
+      expect(path).not.toBeNull()
+    })
+
+    it('should load starter code from main.go', async () => {
+      const code = await loader.loadStarterCode('02-storage-engine')
+      expect(code).not.toBeNull()
+      expect(code).toContain('package main')
+    })
+
+    it('should load brief markdown', async () => {
+      const brief = await loader.loadMilestoneBrief('02-storage-engine')
+      expect(brief).not.toBeNull()
+    })
+  })
+
+  describe('03-05 milestones (placeholder content)', () => {
+    it('should handle empty criteria arrays gracefully', async () => {
+      const criteria = await loader.loadAcceptanceCriteria('03-btree-indexing')
       expect(criteria).toEqual([])
     })
 
     it('should return null benchmark config for empty benchmarks', async () => {
-      const config = await loader.loadBenchmarkConfig('02-storage-engine')
+      const config = await loader.loadBenchmarkConfig('03-btree-indexing')
       expect(config).toBeNull()
     })
 
     it('should return null starterCodePath for .gitkeep only dirs', async () => {
-      const path = await loader.getStarterCodePath('02-storage-engine')
+      const path = await loader.getStarterCodePath('03-btree-indexing')
       expect(path).toBeNull()
     })
 
     it('should return null starterCode for .gitkeep only dirs', async () => {
-      const code = await loader.loadStarterCode('02-storage-engine')
+      const code = await loader.loadStarterCode('03-btree-indexing')
       expect(code).toBeNull()
     })
 
     it('should still load brief markdown for placeholder milestones', async () => {
-      const brief = await loader.loadMilestoneBrief('02-storage-engine')
+      const brief = await loader.loadMilestoneBrief('03-btree-indexing')
       expect(brief).not.toBeNull()
     })
   })

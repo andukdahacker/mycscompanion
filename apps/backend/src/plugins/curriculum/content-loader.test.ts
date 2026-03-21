@@ -533,6 +533,8 @@ describe('ContentLoader', () => {
         conceptExplainerAssets: [],
         starterCodePath: null,
         starterCode: null,
+        starterFiles: null,
+        referenceFiles: null,
         metadata: { csConceptLabel: null },
       })
 

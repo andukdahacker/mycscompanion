@@ -432,6 +432,7 @@ describe('ExecutionProcessor', () => {
         targetMetrics: { opsPerSec: 100 },
       }],
     })
+    ;(contentLoader.loadReferenceFiles as ReturnType<typeof vi.fn>).mockResolvedValue({ 'main.go': 'package main\nfunc main() { /* ref */ }' })
 
     // The runBenchmark mock receives executionClient in its opts
     const runBenchmark: RunBenchmarkFn = vi.fn().mockResolvedValue({ userStdout: BENCHMARK_STDOUT, refStdout: BENCHMARK_STDOUT })
@@ -489,10 +490,14 @@ describe('ExecutionProcessor', () => {
     await seedMilestone()
     await seedUserAndSubmission()
 
-    const BENCHMARK_STDOUT = [
+    const USER_BENCHMARK_STDOUT = [
       '{"type":"benchmark_iteration","target":"user","iteration":1,"total":12,"ops_per_sec":8500,"p50_latency_us":117,"p99_latency_us":450}',
-      '{"type":"benchmark_iteration","target":"reference","iteration":1,"total":12,"ops_per_sec":10200,"p50_latency_us":98,"p99_latency_us":380}',
       '{"type":"benchmark_complete","user_median_ops":8200,"reference_median_ops":10100,"normalized_ratio":0.8119,"user_p50_us":120,"user_p99_us":445,"ref_p50_us":100,"ref_p99_us":385}',
+    ].join('\n')
+
+    const REF_BENCHMARK_STDOUT = [
+      '{"type":"benchmark_iteration","target":"reference","iteration":1,"total":12,"ops_per_sec":10200,"p50_latency_us":98,"p99_latency_us":380}',
+      '{"type":"benchmark_complete","user_median_ops":10100,"reference_median_ops":10100,"normalized_ratio":1.0,"user_p50_us":100,"user_p99_us":385,"ref_p50_us":100,"ref_p99_us":385}',
     ].join('\n')
 
     const executionClient = createMockExecutionClient({ stdout: 'ok\n', exitCode: 0 })
@@ -508,8 +513,9 @@ describe('ExecutionProcessor', () => {
         targetMetrics: { opsPerSec: 100 },
       }],
     })
+    ;(contentLoader.loadReferenceFiles as ReturnType<typeof vi.fn>).mockResolvedValue({ 'main.go': 'package main\nfunc main() { /* ref */ }' })
 
-    const runBenchmark: RunBenchmarkFn = vi.fn().mockResolvedValue({ userStdout: BENCHMARK_STDOUT, refStdout: BENCHMARK_STDOUT })
+    const runBenchmark: RunBenchmarkFn = vi.fn().mockResolvedValue({ userStdout: USER_BENCHMARK_STDOUT, refStdout: REF_BENCHMARK_STDOUT })
 
     const processor = createExecutionProcessor({
       executionClient,
@@ -524,6 +530,7 @@ describe('ExecutionProcessor', () => {
     await processor(createTestJob())
 
     // Verify benchmark_result SSE event published
+    // Processor recalculates: userResult.opsPerSec (8200) / refResult.opsPerSec (10100) = 0.8119
     const publishCalls = (eventPublisher.publish as ReturnType<typeof vi.fn>).mock.calls as Array<[string, { type: string; userMedian?: number; normalizedRatio?: number }]>
     const benchmarkResultEvent = publishCalls.find((call) => call[1].type === 'benchmark_result')
     expect(benchmarkResultEvent).toBeDefined()

@@ -38,7 +38,7 @@ async function autoSaveRoutes(
   fastify.post<{ Body: AutoSaveBody }>('/save', { schema: autoSaveBodySchema }, async (request, reply) => {
     const { milestoneId, code, files } = request.body
 
-    if (!code && !files) {
+    if (code == null && !files) {
       reply.code(400)
       return { error: { code: 'VALIDATION_ERROR', message: 'Either code or files is required' } }
     }

@@ -217,7 +217,7 @@ describe('POST /api/execution/submit', () => {
 
   it('should return 400 when code exceeds max size', async () => {
     const app = await buildApp()
-    const largeCode = 'x'.repeat(65537)
+    const largeCode = 'x'.repeat(131073)
 
     const response = await app.inject({
       method: 'POST',
