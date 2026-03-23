@@ -96,7 +96,14 @@ vi.mock('../stores/editor-store', () => ({
   useEditorStore: Object.assign(
     () => ({ content: 'package main\n\nfunc main() {}\n' }),
     {
-      getState: () => ({ content: 'package main\n\nfunc main() {}\n' }),
+      getState: () => ({
+        content: 'package main\n\nfunc main() {}\n',
+        editableFiles: [],
+        getEditableFilesSnapshot: () => ({}),
+        initFiles: vi.fn(),
+        triggerReset: vi.fn(),
+        clearPendingReset: vi.fn(),
+      }),
       subscribe: vi.fn(() => vi.fn()),
     },
   ),

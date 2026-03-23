@@ -127,22 +127,36 @@ function Workspace(): React.ReactElement | null {
 
   const handleRun = useCallback(() => {
     if (!milestoneId) return
-    const code = useEditorStore.getState().content
     resetTimer()
-    submit({ milestoneId, code })
+    const state = useEditorStore.getState()
+    if (state.editableFiles.length > 0) {
+      submit({ milestoneId, files: state.getEditableFilesSnapshot() })
+    } else {
+      submit({ milestoneId, code: state.content })
+    }
   }, [milestoneId, resetTimer, submit])
 
   const handleBenchmark = useCallback(() => {
     if (!milestoneId) return
-    const code = useEditorStore.getState().content
     resetTimer()
-    submit({ milestoneId, code })
+    const state = useEditorStore.getState()
+    if (state.editableFiles.length > 0) {
+      submit({ milestoneId, files: state.getEditableFilesSnapshot() })
+    } else {
+      submit({ milestoneId, code: state.content })
+    }
   }, [milestoneId, resetTimer, submit])
 
   const handleResetToScaffold = useCallback(() => {
-    if (!data?.starterCode) return
-    useEditorStore.getState().triggerReset(data.starterCode)
-  }, [data?.starterCode])
+    if (!data) return
+    if (data.starterFiles && data.editableFiles && data.editableFiles.length > 0) {
+      useEditorStore.getState().initFiles(data.starterFiles, [...data.editableFiles])
+      // Trigger Monaco to pick up the new active file content
+      useEditorStore.getState().triggerReset(useEditorStore.getState().content)
+    } else if (data.starterCode) {
+      useEditorStore.getState().triggerReset(data.starterCode)
+    }
+  }, [data])
 
   const completeMutation = useMutation({
     mutationKey: ['completion', 'complete'],
@@ -174,6 +188,18 @@ function Workspace(): React.ReactElement | null {
     if (!milestoneId || !effectiveSubmissionId) return
     completeMutation.mutate({ mId: milestoneId, sId: effectiveSubmissionId })
   }, [milestoneId, effectiveSubmissionId, completeMutation])
+
+  // Initialize editor store with multi-file data when available
+  const multiFileInitRef = useRef(false)
+  useEffect(() => {
+    if (!data || multiFileInitRef.current) return
+    const { starterFiles, editableFiles, restoredFiles } = data
+    if (starterFiles && editableFiles && editableFiles.length > 0) {
+      multiFileInitRef.current = true
+      const files = restoredFiles ?? starterFiles
+      useEditorStore.getState().initFiles(files, [...editableFiles])
+    }
+  }, [data])
 
   // Content-before-tools: show brief tab on initial load so user reads brief while Monaco lazy-loads
   // BUT if restored criteria exist, show criteria tab so user sees their progress
@@ -214,12 +240,21 @@ function Workspace(): React.ReactElement | null {
     ? Math.round((effectiveCriteriaResults.filter((r) => r.status === 'met').length / criteria.length) * 100)
     : 0
 
+  // For multi-file milestones, resolve initial content to the first editable file
+  const isMultiFile = data.starterFiles && data.editableFiles && data.editableFiles.length > 0
+  let resolvedInitialContent = data.initialContent
+  if (isMultiFile) {
+    const files = data.restoredFiles ?? data.starterFiles!
+    const activeFile = data.editableFiles![0] as string
+    resolvedInitialContent = files[activeFile] ?? data.initialContent
+  }
+
   return (
     <WorkspaceLayout
       milestoneName={data.milestoneName}
       milestoneNumber={data.milestoneNumber}
       progress={progress}
-      initialContent={data.initialContent}
+      initialContent={resolvedInitialContent}
       onRun={handleRun}
       onBenchmark={handleBenchmark}
       outputLines={outputLines}

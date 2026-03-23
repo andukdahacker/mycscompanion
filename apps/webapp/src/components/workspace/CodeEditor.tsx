@@ -4,6 +4,7 @@ import { Skeleton } from '@mycscompanion/ui/src/components/ui/skeleton'
 import { defineMycscompanionTheme } from './monaco-theme'
 import { announceToScreenReader } from './workspace-a11y'
 import { useEditorStore } from '../../stores/editor-store'
+import { FileTabs } from './FileTabs'
 
 interface CodeEditorProps {
   readonly initialContent: string
@@ -94,7 +95,9 @@ function CodeEditor({ initialContent, onRun }: CodeEditorProps): React.ReactElem
   }, [setContent])
 
   return (
-    <div id="code-editor-boundary" className="h-full w-full">
+    <div id="code-editor-boundary" className="flex h-full w-full flex-col">
+      <FileTabs />
+      <div className="min-h-0 flex-1">
       <Editor
         language="go"
         theme="mycscompanion-dark"
@@ -123,6 +126,7 @@ function CodeEditor({ initialContent, onRun }: CodeEditorProps): React.ReactElem
           acceptSuggestionOnCommitCharacter: false,
         }}
       />
+      </div>
     </div>
   )
 }
