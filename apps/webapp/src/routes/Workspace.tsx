@@ -243,9 +243,9 @@ function Workspace(): React.ReactElement | null {
   // For multi-file milestones, resolve initial content to the first editable file
   const isMultiFile = data.starterFiles && data.editableFiles && data.editableFiles.length > 0
   let resolvedInitialContent = data.initialContent
-  if (isMultiFile) {
-    const files = data.restoredFiles ?? data.starterFiles!
-    const activeFile = data.editableFiles![0] as string
+  if (isMultiFile && data.starterFiles && data.editableFiles) {
+    const files = data.restoredFiles ?? data.starterFiles
+    const activeFile = data.editableFiles[0] as string
     resolvedInitialContent = files[activeFile] ?? data.initialContent
   }
 
